@@ -1,0 +1,98 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Reads the caller's own profile to check their role.
+    function myProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function isBoss() {
+      return isSignedIn() && myProfile().role == 'boss';
+    }
+    function isApprovedStaff() {
+      return isSignedIn()
+        && myProfile().role == 'staff'
+        && myProfile().approved == true
+        && myProfile().active == true;
+    }
+
+    // True when the given path parts (VN local day keys) are TODAY in
+    // Asia/Ho_Chi_Minh (UTC+7, no DST). Used to let staff see everyone's
+    // registrations for the current day, but not for past days.
+    function isTodayVN(year, month, day) {
+      let vn = request.time + duration.value(7, 'h');
+      return int(year) == vn.year()
+        && int(month) == vn.month()
+        && int(day) == vn.day();
+    }
+
+    // ---- app config (version gating) ----
+    // Public read: the force-update gate must read config/app before sign-in.
+    // Only holds non-sensitive values (minVersion, updateUrl). Write via the
+    // Firebase console / admin only.
+    match /config/{doc} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // ---- users ----
+    match /users/{uid} {
+      // A user can read their own profile; a boss can read everyone.
+      allow read: if isSignedIn() && (request.auth.uid == uid || isBoss());
+
+      // New users create their own profile, but cannot self-approve or make
+      // themselves a boss. They start active but unapproved.
+      allow create: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.data.role == 'staff'
+        && request.resource.data.approved == false
+        && request.resource.data.active == true;
+
+      // A user may update only their unit / fcmToken (not role/approved/active).
+      // A boss may update anyone (e.g. to approve or deactivate them).
+      allow update: if isBoss()
+        || (request.auth.uid == uid
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.approved == resource.data.approved
+            && request.resource.data.active == resource.data.active);
+
+      allow delete: if isBoss();
+    }
+
+    // ---- plan history: history/{year}/months/{month}/days/{day}/entries/{uid}
+    // Rule A (recursive wildcard) also covers collectionGroup('entries') — the
+    // staff "own history" query. It grants: boss → all; staff → own (any day).
+    match /{path=**}/entries/{uid} {
+      // Own entries (any day), for both `get` and collectionGroup queries:
+      //  - doc-id branch (request.auth.uid == uid): allows a `get` on a
+      //    not-yet-created entry (resource == null) without erroring, since the
+      //    entry doc id is always the owner's uid.
+      //  - field branch (resource.data.uid ...): lets the "own history"
+      //    collectionGroup('entries').where('uid','==', me) query pass the
+      //    Firestore query-rules analysis (which matches on the field, not the
+      //    doc id).
+      allow read: if isBoss()
+        || (isSignedIn() && request.auth.uid == uid)
+        || (isSignedIn() && resource != null && resource.data.uid == request.auth.uid);
+
+      // Approved staff may write only their own entry.
+      allow write: if isApprovedStaff()
+        && request.auth.uid == uid
+        && request.resource.data.uid == request.auth.uid;
+    }
+
+    // Rule B: approved staff may additionally READ everyone's entries for the
+    // CURRENT day (the "đăng ký công tác hôm nay" coordination view). Past days
+    // stay private — a query on an older day's entries is denied for staff, so
+    // the History screen cannot see other users. (Rules are additive: a doc is
+    // readable if Rule A OR Rule B allows it.)
+    match /history/{year}/months/{month}/days/{day}/entries/{uid} {
+      allow read: if isApprovedStaff() && isTodayVN(year, month, day);
+    }
+  }
+}
