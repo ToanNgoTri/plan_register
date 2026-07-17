@@ -8,6 +8,13 @@ require Pod::Executable.execute_command('node', ['-p',
 platform :ios, min_ios_version_supported
 prepare_react_native_project!
 
+# React Native Firebase (v15+) requires the Firebase SDK to be linked as
+# frameworks. Default to static linkage so a plain `pod install` works without
+# passing USE_FRAMEWORKS=static on the command line, and build Firebase itself
+# as a static framework. Set USE_FRAMEWORKS yourself to override.
+ENV['USE_FRAMEWORKS'] ||= 'static'
+$RNFirebaseAsStaticFramework = true
+
 linkage = ENV['USE_FRAMEWORKS']
 if linkage != nil
   Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
