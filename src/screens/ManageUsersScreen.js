@@ -153,6 +153,9 @@ export default function ManageUsersScreen() {
         <View style={styles.card}>
           <View style={styles.info}>
             <Text style={styles.name}>{displayNameOf(item)}</Text>
+            {item.position ? (
+              <Text style={styles.sub}>{item.position}</Text>
+            ) : null}
             <Text style={styles.sub}>{item.email}</Text>
             <Text style={styles.sub}>
               {item.unit ? item.unit : 'Chưa nhập đơn vị'}

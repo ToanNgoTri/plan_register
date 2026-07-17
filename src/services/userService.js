@@ -31,6 +31,7 @@ export async function ensureUserProfile(params) {
     email: params.email,
     displayName: params.displayName || params.email,
     fullName: '',
+    position: '',
     photoURL: params.photoURL ?? null,
     unit: '',
     role: 'staff',
@@ -59,6 +60,20 @@ export async function updateUnit(uid, unit) {
 export async function updateFullName(uid, fullName) {
   await updateDoc(userDoc(uid), {
     fullName,
+  });
+}
+export async function updatePosition(uid, position) {
+  await updateDoc(userDoc(uid), {
+    position,
+  });
+}
+
+/** Update the user-editable profile fields (họ tên, chức vụ, đơn vị) at once. */
+export async function updateProfileInfo(uid, { fullName, position, unit }) {
+  await updateDoc(userDoc(uid), {
+    fullName,
+    position,
+    unit,
   });
 }
 
@@ -124,5 +139,16 @@ export async function reactivateUser(uid) {
  * account — see functions/deleteUserAccount for that (admin-only).
  */
 export async function deleteUser(uid) {
+  await deleteDoc(userDoc(uid));
+}
+
+/**
+ * Self-service delete: a user removes their own profile document. Access is
+ * revoked immediately (security rules key off this doc), and the app drops them
+ * back to the login screen once the doc is gone. Past plan entries are kept for
+ * the record. The Firebase Auth account is left intact (a boss can fully purge
+ * it via functions/deleteUserAccount).
+ */
+export async function deleteOwnAccount(uid) {
   await deleteDoc(userDoc(uid));
 }

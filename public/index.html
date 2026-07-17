@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="vi">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chính sách quyền riêng tư — PlanRegister</title>
+    <meta
+      name="description"
+      content="Chính sách quyền riêng tư và quyền truy cập của ứng dụng PlanRegister."
+    />
+    <style>
+      :root {
+        --bg: #f4f6fb;
+        --card: #ffffff;
+        --text: #1a1a2e;
+        --muted: #6b7280;
+        --border: #e2e6ee;
+        --primary: #1e6feb;
+        --primary-dark: #0b4bc4;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        line-height: 1.65;
+      }
+      header {
+        background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+        color: #fff;
+        padding: 40px 20px 48px;
+        text-align: center;
+      }
+      header .emoji {
+        font-size: 44px;
+      }
+      header h1 {
+        margin: 12px 0 6px;
+        font-size: 26px;
+      }
+      header p {
+        margin: 0;
+        opacity: 0.9;
+        font-size: 15px;
+      }
+      main {
+        max-width: 760px;
+        margin: -28px auto 40px;
+        padding: 0 16px;
+      }
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 28px 24px;
+        box-shadow: 0 6px 24px rgba(20, 30, 60, 0.06);
+      }
+      .updated {
+        color: var(--muted);
+        font-size: 14px;
+        margin: 0 0 20px;
+      }
+      h2 {
+        font-size: 19px;
+        margin: 28px 0 10px;
+        padding-top: 6px;
+      }
+      h2:first-of-type {
+        margin-top: 8px;
+      }
+      p,
+      li {
+        font-size: 15.5px;
+      }
+      ul {
+        padding-left: 22px;
+      }
+      li {
+        margin-bottom: 8px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 12px 0;
+        font-size: 14.5px;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 10px 12px;
+        border: 1px solid var(--border);
+        vertical-align: top;
+      }
+      th {
+        background: #eef3fe;
+      }
+      .note {
+        background: #eef3fe;
+        border-left: 4px solid var(--primary);
+        border-radius: 8px;
+        padding: 12px 16px;
+        margin: 16px 0;
+        font-size: 15px;
+      }
+      a {
+        color: var(--primary-dark);
+      }
+      code {
+        background: #eef1f7;
+        padding: 1px 6px;
+        border-radius: 5px;
+        font-size: 13.5px;
+      }
+      footer {
+        text-align: center;
+        color: var(--muted);
+        font-size: 13px;
+        padding: 8px 16px 40px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="emoji">🛡️</div>
+      <h1>Chính sách quyền riêng tư</h1>
+      <p>Ứng dụng PlanRegister (<code>com.planregister</code>)</p>
+    </header>
+
+    <main>
+      <div class="card">
+        <p class="updated">Cập nhật lần cuối: 17/07/2026</p>
+
+        <p>
+          Ứng dụng <strong>PlanRegister</strong> ("ứng dụng", "chúng tôi") là
+          công cụ nội bộ giúp cán bộ đăng ký kế hoạch công tác hằng ngày và giúp
+          người quản lý theo dõi. Chính sách này giải thích chúng tôi thu thập,
+          sử dụng và bảo vệ thông tin của bạn như thế nào, cùng các quyền
+          (permission) mà ứng dụng yêu cầu trên thiết bị.
+        </p>
+
+        <h2>1. Thông tin chúng tôi thu thập</h2>
+        <p>
+          Khi bạn đăng nhập và sử dụng ứng dụng, các dữ liệu sau được lưu trên hạ
+          tầng Google Firebase (Authentication và Cloud Firestore):
+        </p>
+        <table>
+          <tr>
+            <th>Dữ liệu</th>
+            <th>Mục đích</th>
+          </tr>
+          <tr>
+            <td>Địa chỉ email (từ tài khoản Google)</td>
+            <td>Xác thực đăng nhập và định danh tài khoản</td>
+          </tr>
+          <tr>
+            <td>Họ tên, chức vụ, đơn vị công tác</td>
+            <td>Hiển thị trong danh sách đăng ký và bảng theo dõi</td>
+          </tr>
+          <tr>
+            <td>Vai trò (cán bộ / quản lý), trạng thái duyệt</td>
+            <td>Phân quyền tính năng trong ứng dụng</td>
+          </tr>
+          <tr>
+            <td>Nội dung kế hoạch công tác đã đăng ký và ngày đăng ký</td>
+            <td>Chức năng chính: đăng ký và tra cứu lịch sử công tác</td>
+          </tr>
+          <tr>
+            <td>Mã thiết bị nhận thông báo (FCM token)</td>
+            <td>Gửi thông báo đẩy cho người quản lý khi có đăng ký/cập nhật</td>
+          </tr>
+        </table>
+
+        <div class="note">
+          <strong>Ảnh đại diện chỉ lưu trên máy của bạn.</strong> Ảnh bạn chọn
+          làm avatar được lưu cục bộ trên thiết bị và <strong>không</strong>
+          được tải lên máy chủ hay chia sẻ với bất kỳ ai.
+        </div>
+
+        <p>
+          Ứng dụng <strong>không</strong> thu thập vị trí, danh bạ, lịch sử
+          duyệt web, hay dữ liệu nhạy cảm khác; và <strong>không</strong> dùng
+          cho mục đích quảng cáo.
+        </p>
+
+        <h2>2. Quyền truy cập ứng dụng yêu cầu</h2>
+        <table>
+          <tr>
+            <th>Quyền</th>
+            <th>Lý do sử dụng</th>
+          </tr>
+          <tr>
+            <td>Truy cập Internet</td>
+            <td>Đồng bộ dữ liệu đăng ký với máy chủ Firebase</td>
+          </tr>
+          <tr>
+            <td>Gửi thông báo (Notifications)</td>
+            <td>
+              Nhắc cán bộ đăng ký kế hoạch và báo cho quản lý khi có đăng ký mới
+            </td>
+          </tr>
+          <tr>
+            <td>Đặt báo thức chính xác (Exact alarm)</td>
+            <td>Hiển thị lời nhắc đăng ký đúng giờ mỗi ngày làm việc</td>
+          </tr>
+          <tr>
+            <td>Chạy lại sau khi khởi động máy</td>
+            <td>Đặt lại lịch nhắc sau khi thiết bị khởi động lại</td>
+          </tr>
+          <tr>
+            <td>Truy cập thư viện ảnh</td>
+            <td>Cho phép bạn chọn ảnh đại diện (lưu cục bộ trên máy)</td>
+          </tr>
+        </table>
+
+        <h2>3. Chia sẻ dữ liệu với bên thứ ba</h2>
+        <p>
+          Chúng tôi không bán và không chia sẻ dữ liệu cá nhân cho bên thứ ba vì
+          mục đích thương mại. Dữ liệu chỉ được xử lý bởi các dịch vụ của Google
+          Firebase (Authentication, Cloud Firestore, Cloud Messaging, Cloud
+          Functions) với vai trò nhà cung cấp hạ tầng. Bạn có thể tham khảo
+          <a href="https://firebase.google.com/support/privacy" target="_blank" rel="noopener"
+            >Chính sách quyền riêng tư của Firebase</a
+          >.
+        </p>
+        <p>
+          Trong nội bộ tổ chức, nội dung kế hoạch công tác trong ngày có thể được
+          các cán bộ và người quản lý cùng đơn vị xem để phối hợp công việc.
+        </p>
+
+        <h2>4. Lưu trữ và bảo mật</h2>
+        <ul>
+          <li>
+            Dữ liệu được lưu trên máy chủ Google Firebase và bảo vệ bằng các quy
+            tắc bảo mật (security rules) giới hạn quyền đọc/ghi theo vai trò.
+          </li>
+          <li>
+            Kết nối giữa ứng dụng và máy chủ được mã hóa (HTTPS/TLS).
+          </li>
+          <li>
+            Dữ liệu được giữ trong thời gian tài khoản còn hoạt động phục vụ mục
+            đích quản lý công tác.
+          </li>
+        </ul>
+
+        <h2>5. Quyền của bạn</h2>
+        <ul>
+          <li>Chỉnh sửa thông tin cá nhân (họ tên, chức vụ, đơn vị) trong mục Cài đặt.</li>
+          <li>
+            Xóa tài khoản của mình trong ứng dụng; khi đó hồ sơ của bạn bị xóa
+            (lịch sử đăng ký đã tạo có thể được giữ lại cho mục đích lưu trữ của
+            đơn vị).
+          </li>
+          <li>Tắt quyền thông báo bất cứ lúc nào trong cài đặt hệ thống của thiết bị.</li>
+        </ul>
+
+        <h2>6. Quyền riêng tư của trẻ em</h2>
+        <p>
+          Ứng dụng dành cho cán bộ, nhân viên và không hướng đến trẻ em dưới 13
+          tuổi.
+        </p>
+
+        <h2>7. Thay đổi chính sách</h2>
+        <p>
+          Chính sách này có thể được cập nhật theo thời gian. Mọi thay đổi sẽ được
+          đăng tải trên trang này kèm ngày cập nhật mới.
+        </p>
+
+        <h2>8. Liên hệ</h2>
+        <p>
+          Mọi thắc mắc về quyền riêng tư, vui lòng liên hệ:
+          <br />
+          <a href="mailto:chau.nguyen@classicspins.com">chau.nguyen@classicspins.com</a>
+        </p>
+      </div>
+      <footer>© 2026 PlanRegister. Mọi quyền được bảo lưu.</footer>
+    </main>
+  </body>
+</html>

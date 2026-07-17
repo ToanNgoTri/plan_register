@@ -33,8 +33,9 @@ service cloud.firestore {
 
     // ---- app config (version gating) ----
     // Public read: the force-update gate must read config/app before sign-in.
-    // Only holds non-sensitive values (minVersion, updateUrl). Write via the
-    // Firebase console / admin only.
+    // Only holds non-sensitive values (minVersion, latestVersion, updateUrl,
+    // message). Write via the Firebase console / admin only — no in-app client
+    // may modify it.
     match /config/{doc} {
       allow read: if true;
       allow write: if false;
@@ -61,7 +62,8 @@ service cloud.firestore {
             && request.resource.data.approved == resource.data.approved
             && request.resource.data.active == resource.data.active);
 
-      allow delete: if isBoss();
+      // A boss may delete anyone; a user may delete their own account.
+      allow delete: if isBoss() || request.auth.uid == uid;
     }
 
     // ---- plan history: history/{year}/months/{month}/days/{day}/entries/{uid}

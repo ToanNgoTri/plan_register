@@ -6,14 +6,17 @@
  * used for the boss alert below, which must reach the boss even when the app is
  * closed.
  *
- *  1. onPlanRegistered  — when a staff member registers a plan, push FCM to
- *     all bosses. Works even when the boss app is closed.
+ *  1. onPlanRegistered  — when a staff member registers OR updates a plan, push
+ *     FCM to all bosses. Works even when the boss app is closed. Uses
+ *     onDocumentWritten (not onDocumentCreated) because a staff member has one
+ *     entry doc per day (id = their uid); re-submitting the same day overwrites
+ *     it as an UPDATE, which onDocumentCreated would miss.
  *  2. deleteUserAccount — callable (boss only): fully delete a user's Auth
  *     account + profile doc.
  *
  * Deploy:  cd functions && npm install && npm run deploy
  */
-const {onDocumentCreated} = require("firebase-functions/v2/firestore");
+const {onDocumentWritten} = require("firebase-functions/v2/firestore");
 const {onCall, HttpsError} = require("firebase-functions/v2/https");
 const {logger} = require("firebase-functions");
 const admin = require("firebase-admin");
@@ -45,14 +48,24 @@ async function sendToTokens(tokens, notification) {
   return res;
 }
 
-// 1) Alert all bosses when a plan is registered.
-exports.onPlanRegistered = onDocumentCreated(
+// 1) Alert all bosses when a plan is registered OR updated.
+exports.onPlanRegistered = onDocumentWritten(
     "history/{year}/months/{month}/days/{day}/entries/{uid}",
     async (event) => {
-      const entry = event.data && event.data.data();
+      const after = event.data && event.data.after;
+      // No `after` → the entry was deleted; nothing to announce.
+      if (!after || !after.exists) {
+        return;
+      }
+      const entry = after.data();
       if (!entry) {
         return;
       }
+      // Distinguish a brand-new registration from an edit of an existing one.
+      const before = event.data.before;
+      const isUpdate = before && before.exists;
+      const verb = isUpdate ? "vừa cập nhật" : "vừa đăng ký";
+
       const bossSnap = await db
           .collection("users")
           .where("role", "==", "boss")
@@ -62,9 +75,7 @@ exports.onPlanRegistered = onDocumentCreated(
           .filter(Boolean);
 
       await sendToTokens(tokens, {
-        title: `${entry.displayName}${
-        entry.unit ? ` (${entry.unit})` : ""
-        } vừa đăng ký`,
+        title: `${entry.displayName} ${verb}`,
         body: entry.content || "Đã đăng ký kế hoạch công tác.",
       });
     },

@@ -89,6 +89,11 @@ async function check(name, expectPass, thunk) {
 await check('anon reads config/app', true, () => getDoc(doc(anon, 'config', 'app')));
 // unauthenticated cannot read a user profile → denied
 await check('anon reads users (deny)', false, () => getDoc(doc(anon, 'users', 'staffA')));
+// nobody may write the version config from a client (console/admin only) → denied
+await check('staff writes config/app (deny)', false, () =>
+  setDoc(doc(staffA, 'config', 'app'), { minVersion: '9.9.9' }));
+await check('anon writes config/app (deny)', false, () =>
+  setDoc(doc(anon, 'config', 'app'), { minVersion: '9.9.9' }));
 // staff reads today's full list (others included) → allowed
 await check('staff reads TODAY all entries', true, () => getDocs(entriesCol(staffA, today)));
 // staff reads another user's today entry directly → allowed

@@ -17,3 +17,9 @@ export const REMINDER_MINUTE = 0;
 
 /** Notifee channel id used for the daily reminder + boss alerts (Android). */
 export const ANDROID_CHANNEL_ID = 'plan-register-default';
+
+/**
+ * Chức vụ (job title / rank) options a user can pick for their profile. This is
+ * independent of `role` (boss/staff), which controls app permissions.
+ */
+export const POSITIONS = ['Trưởng CA', 'Phó Trưởng CA', 'Cán bộ'];

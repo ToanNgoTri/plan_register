@@ -1,12 +1,5 @@
 import React from 'react';
-import {
-  ActivityIndicator,
-  Alert,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -19,40 +12,30 @@ import HistoryScreen from '../screens/HistoryScreen';
 import ManageUsersScreen from '../screens/ManageUsersScreen';
 import InactiveScreen from '../screens/InactiveScreen';
 import ProfileErrorScreen from '../screens/ProfileErrorScreen';
+import SettingsScreen from '../screens/SettingsScreen';
 import BossAlertListener from '../components/BossAlertListener';
+import { displayNameOf } from '../services/userService';
 import { colors } from '../theme';
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
-function SignOutButton() {
-  const { signOut } = useAuth();
-  const onPress = () =>
-    Alert.alert('Đăng xuất', 'Bạn có chắc muốn đăng xuất?', [
-      {
-        text: 'Huỷ',
-        style: 'cancel',
-      },
-      {
-        text: 'Đăng xuất',
-        style: 'destructive',
-        onPress: () => signOut(),
-      },
-    ]);
+
+/** Header greeting (left side): "Xin chào, [HỌ TÊN]" for the signed-in user. */
+function HeaderGreeting() {
+  const { profile } = useAuth();
+  const name = profile ? displayNameOf(profile) : '';
   return (
-    <TouchableOpacity
-      onPress={onPress}
+    <Text
+      numberOfLines={1}
       style={{
-        paddingHorizontal: 12,
+        color: '#fff',
+        fontWeight: '600',
+        fontSize: 16,
+        paddingLeft: 16,
+        maxWidth: 260,
       }}
     >
-      <Text
-        style={{
-          color: '#fff',
-          fontWeight: '600',
-        }}
-      >
-        Đăng xuất
-      </Text>
-    </TouchableOpacity>
+      Xin chào, {name.toUpperCase()}
+    </Text>
   );
 }
 const tabIcon = emoji => () =>
@@ -70,7 +53,10 @@ const screenOptions = {
     backgroundColor: colors.primary,
   },
   headerTintColor: '#fff',
-  headerRight: () => <SignOutButton />,
+  // Greeting on the left; the screen title is hidden (the tab bar already shows
+  // the tab name at the bottom).
+  headerTitle: () => null,
+  headerLeft: () => <HeaderGreeting />,
   tabBarActiveTintColor: colors.primary,
 };
 function BossTabs() {
@@ -102,6 +88,14 @@ function BossTabs() {
             tabBarIcon: tabIcon('👥'),
           }}
         />
+        <Tab.Screen
+          name="Settings"
+          component={SettingsScreen}
+          options={{
+            title: 'Cài đặt',
+            tabBarIcon: tabIcon('⚙️'),
+          }}
+        />
       </Tab.Navigator>
     </>
   );
@@ -123,6 +117,14 @@ function StaffTabs() {
         options={{
           title: 'Lịch sử',
           tabBarIcon: tabIcon('🗓️'),
+        }}
+      />
+      <Tab.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{
+          title: 'Cài đặt',
+          tabBarIcon: tabIcon('⚙️'),
         }}
       />
     </Tab.Navigator>

@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -12,9 +12,15 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import DailyStatusTable from '../components/DailyStatusTable';
+import PositionSelect from '../components/PositionSelect';
 import { getDailyStatus, getMyEntry } from '../services/planService';
+import { displayNameOf } from '../services/userService';
 import { formatDateVi, toDateKey } from '../utils/date';
 import { colors, spacing } from '../theme';
+
+// Boss history table: filter by an individual cán bộ / phó trưởng (by name),
+// plus an "all" option. Sentinel value for the "all" entry.
+const ALL_PEOPLE = '__ALL__';
 /**
  * Boss: browse any day's full staff table (with red for missing).
  * Staff: their own registration history, newest first.
@@ -28,7 +34,24 @@ function BossHistory() {
   const [showPicker, setShowPicker] = useState(false);
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [personFilter, setPersonFilter] = useState(ALL_PEOPLE);
   const isToday = toDateKey(date) === toDateKey(new Date());
+  // Dropdown options: "Tất cả" + one entry per person in the table (label = tên,
+  // value = uid to stay unique even if two people share a name).
+  const personOptions = useMemo(
+    () => [
+      { label: 'Tất cả', value: ALL_PEOPLE },
+      ...rows.map(r => ({ label: displayNameOf(r.user), value: r.user.uid })),
+    ],
+    [rows],
+  );
+  const visibleRows = useMemo(
+    () =>
+      personFilter === ALL_PEOPLE
+        ? rows
+        : rows.filter(r => r.user?.uid === personFilter),
+    [rows, personFilter],
+  );
   const load = useCallback(async d => {
     setLoading(true);
     try {
@@ -85,6 +108,17 @@ function BossHistory() {
         />
       )}
 
+      <View style={styles.filterBar}>
+        <Text style={styles.filterLabel}>Lọc theo cán bộ</Text>
+        <PositionSelect
+          value={personFilter}
+          onChange={setPersonFilter}
+          options={personOptions}
+          title="Chọn cán bộ"
+          placeholder="Tất cả"
+        />
+      </View>
+
       {loading ? (
         <ActivityIndicator style={styles.loader} />
       ) : (
@@ -92,7 +126,7 @@ function BossHistory() {
           data={[0]}
           keyExtractor={() => 'table'}
           contentContainerStyle={styles.container}
-          renderItem={() => <DailyStatusTable rows={rows} />}
+          renderItem={() => <DailyStatusTable rows={visibleRows} />}
         />
       )}
     </View>
@@ -225,6 +259,20 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
     textAlign: 'center',
+  },
+  filterBar: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+    paddingBottom: spacing.sm,
+    backgroundColor: colors.card,
+    borderBottomWidth: 1,
+    borderColor: colors.border,
+  },
+  filterLabel: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: spacing.xs,
   },
   loader: {
     marginTop: spacing.xl,

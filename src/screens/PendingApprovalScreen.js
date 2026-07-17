@@ -8,7 +8,8 @@ import {
   View,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import { updateFullName, updateUnit } from '../services/userService';
+import { updateProfileInfo } from '../services/userService';
+import PositionSelect from '../components/PositionSelect';
 import { colors, spacing } from '../theme';
 
 /**
@@ -18,6 +19,7 @@ import { colors, spacing } from '../theme';
 export default function PendingApprovalScreen() {
   const { profile, signOut } = useAuth();
   const [fullName, setFullName] = useState(profile?.fullName ?? '');
+  const [position, setPosition] = useState(profile?.position ?? '');
   const [unit, setUnit] = useState(profile?.unit || 'Công an phường Hàng Gòn');
   const [saving, setSaving] = useState(false);
   // True once info has been saved — locks the button into a "pending" state.
@@ -32,14 +34,21 @@ export default function PendingApprovalScreen() {
       Alert.alert('Thiếu họ tên', 'Vui lòng nhập họ và tên.');
       return;
     }
+    if (!position) {
+      Alert.alert('Thiếu chức vụ', 'Vui lòng chọn chức vụ.');
+      return;
+    }
     if (!unit.trim()) {
       Alert.alert('Thiếu đơn vị', 'Vui lòng nhập đơn vị.');
       return;
     }
     try {
       setSaving(true);
-      await updateFullName(profile.uid, fullName.trim());
-      await updateUnit(profile.uid, unit.trim());
+      await updateProfileInfo(profile.uid, {
+        fullName: fullName.trim(),
+        position,
+        unit: unit.trim(),
+      });
       setSaved(true);
       Alert.alert('Đã lưu', 'Thông tin của bạn đã được cập nhật.');
     } catch (e) {
@@ -69,6 +78,15 @@ export default function PendingApprovalScreen() {
         }}
         placeholder="Nhập họ và tên của bạn"
         placeholderTextColor={colors.textMuted}
+      />
+
+      <Text style={[styles.label, styles.labelSpaced]}>Chức vụ</Text>
+      <PositionSelect
+        value={position}
+        onChange={p => {
+          setPosition(p);
+          setSaved(false); // editing again re-enables saving
+        }}
       />
 
       <Text style={[styles.label, styles.labelSpaced]}>Đơn vị / Phòng ban</Text>
