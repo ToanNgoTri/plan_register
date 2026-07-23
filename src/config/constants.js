@@ -19,7 +19,12 @@ export const REMINDER_MINUTE = 0;
 export const ANDROID_CHANNEL_ID = 'plan-register-default';
 
 /**
- * Chức vụ (job title / rank) options a user can pick for their profile. This is
- * independent of `role` (boss/staff), which controls app permissions.
+ * Chức vụ (job title / rank) options a user can pick for their profile.
+ *
+ * NOTE: the `BOSS_POSITION` chức vụ grants boss permissions on its own —
+ * anyone whose position is "Trưởng CA" is treated as a boss (full management +
+ * approval), regardless of the stored `role`. Keep this string in sync with
+ * the same literal in firestore.rules.
  */
 export const POSITIONS = ['Trưởng CA', 'Phó Trưởng CA', 'Cán bộ'];
+export const BOSS_POSITION = 'Trưởng CA';

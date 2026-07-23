@@ -6,6 +6,17 @@ require Pod::Executable.execute_command('node', ['-p',
   )', __dir__]).strip
 
 platform :ios, min_ios_version_supported
+
+# RN 0.86 ships a *prebuilt* React Native Core (delivered as an XCFramework via a
+# VFS overlay). That breaks libraries such as @react-native-firebase that textually
+# `#import <React/RCTBridgeModule.h>` inside their own framework module — Clang then
+# mis-attributes RCTBridgeModule to the first RNFB framework module that absorbs it
+# ("declaration of 'RCTBridgeModule' must be imported from module
+# 'RNFBApp.RNFBAppModule' before it is required"). Build React Native from source so
+# the React headers resolve as a normal module. Override by exporting these as '1'.
+ENV['RCT_USE_RN_DEP'] ||= '0'
+ENV['RCT_USE_PREBUILT_RNCORE'] ||= '0'
+
 prepare_react_native_project!
 
 # React Native Firebase (v15+) requires the Firebase SDK to be linked as

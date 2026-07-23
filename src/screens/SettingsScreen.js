@@ -185,10 +185,8 @@ function EditProfileModal({ visible, profile, onClose, onDeleted }) {
   }, [visible, profile]);
 
   const save = async () => {
-    if (!fullName.trim()) {
-      Alert.alert('Thiếu họ tên', 'Vui lòng nhập họ và tên.');
-      return;
-    }
+    // Họ tên is optional (pre-filled from the sign-in provider); see the
+    // Guideline 4 note in PendingApprovalScreen.
     if (!position) {
       Alert.alert('Thiếu chức vụ', 'Vui lòng chọn chức vụ.');
       return;
@@ -203,6 +201,7 @@ function EditProfileModal({ visible, profile, onClose, onDeleted }) {
         fullName: fullName.trim(),
         position,
         unit: unit.trim(),
+        currentRole: profile.role,
       });
       onClose();
     } catch (e) {

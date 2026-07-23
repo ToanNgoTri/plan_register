@@ -66,6 +66,10 @@ await env.withSecurityRulesDisabled(async ctx => {
   await setDoc(doc(db, 'users', 'boss1'), { role: 'boss', approved: true, active: true, uid: 'boss1' });
   await setDoc(doc(db, 'users', 'staffA'), { role: 'staff', approved: true, active: true, uid: 'staffA' });
   await setDoc(doc(db, 'users', 'staffB'), { role: 'staff', approved: true, active: true, uid: 'staffB' });
+  // A "Trưởng CA" chức vụ grants boss powers even with role 'staff'.
+  await setDoc(doc(db, 'users', 'chief1'), { role: 'staff', position: 'Trưởng CA', approved: false, active: true, uid: 'chief1' });
+  // A pending (unapproved) user, used to test self-approval via chức vụ.
+  await setDoc(doc(db, 'users', 'selfP'), { role: 'staff', approved: false, active: true, uid: 'selfP' });
   const mk = (p, uid) => setDoc(entryRef(db, p, uid), { uid, displayName: uid, unit: 'U', date: `${p.year}-${p.month}-${p.day}`, content: 'x', createdAt: 1, updatedAt: 1 });
   await mk(today, 'staffA');
   await mk(today, 'staffB');
@@ -74,6 +78,8 @@ await env.withSecurityRulesDisabled(async ctx => {
 });
 
 const staffA = env.authenticatedContext('staffA').firestore();
+const chief = env.authenticatedContext('chief1').firestore();
+const selfP = env.authenticatedContext('selfP').firestore();
 const anon = env.unauthenticatedContext().firestore();
 
 async function check(name, expectPass, thunk) {
@@ -108,6 +114,43 @@ await check('staff reads OWN history (group)', true, () =>
 // staff reads another user's history (collectionGroup) → denied
 await check('staff reads OTHER history (group, deny)', false, () =>
   getDocs(query(collectionGroup(staffA, 'entries'), where('uid', '==', 'staffB'))));
+
+// "Trưởng CA" (position-only boss) has boss read powers:
+// reads another user's PAST entry directly → allowed (a plain staff cannot)
+await check('chief (Trưởng CA) reads other PAST entry', true, () =>
+  getDoc(entryRef(chief, yest, 'staffB')));
+// lists a PAST day's full entries → allowed
+await check('chief (Trưởng CA) lists PAST day all entries', true, () =>
+  getDocs(entriesCol(chief, yest)));
+// reads any user profile → allowed (boss/manager read)
+await check('chief (Trưởng CA) reads users', true, () =>
+  getDoc(doc(chief, 'users', 'staffA')));
+
+// ---- self profile update: role must follow chức vụ ----
+const selfDoc = () => doc(staffA, 'users', 'staffA');
+const base = { uid: 'staffA', approved: true, active: true };
+// self sets role=boss but position is NOT Trưởng CA → denied (role must match position)
+await check('self sets role=boss with wrong position (deny)', false, () =>
+  setDoc(selfDoc(), { ...base, role: 'boss', position: 'Cán bộ' }));
+// self tries to self-approve/deactivate flip → denied
+await check('self flips approved (deny)', false, () =>
+  setDoc(selfDoc(), { ...base, approved: false, role: 'staff', position: 'Cán bộ' }));
+// self tries to grant themselves the dev role → denied
+await check('self sets role=dev (deny)', false, () =>
+  setDoc(selfDoc(), { ...base, role: 'dev', position: 'Trưởng CA' }));
+// self picks "Trưởng CA" chức vụ → role=boss allowed (self-promote, accepted)
+await check('self picks Trưởng CA → role=boss (allow)', true, () =>
+  setDoc(selfDoc(), { ...base, role: 'boss', position: 'Trưởng CA' }));
+
+// ---- pending user self-approves ONLY by picking Trưởng CA ----
+const selfPDoc = () => doc(selfP, 'users', 'selfP');
+// pending user tries to self-approve with a non-Trưởng chức vụ → denied
+// (runs first, while selfP is still approved:false)
+await check('pending self-approves as Cán bộ (deny)', false, () =>
+  setDoc(selfPDoc(), { uid: 'selfP', active: true, role: 'staff', approved: true, position: 'Cán bộ' }));
+// pending user picks Trưởng CA → role=boss AND approved=true → allowed (auto-approve)
+await check('pending picks Trưởng CA → approved=true (allow)', true, () =>
+  setDoc(selfPDoc(), { uid: 'selfP', active: true, role: 'boss', approved: true, position: 'Trưởng CA' }));
 
 await env.cleanup();
 

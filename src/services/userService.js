@@ -11,7 +11,19 @@ import {
   where,
 } from '@react-native-firebase/firestore';
 import { db } from './firebase';
+import { BOSS_POSITION } from '../config/constants';
 const usersCol = () => collection(db, 'users');
+
+/**
+ * The role implied by a chức vụ: "Trưởng CA" ⇒ boss, anything else ⇒ staff.
+ * A `dev` (review/demo) account keeps its role regardless of position.
+ */
+export function roleForPosition(position, currentRole) {
+  if (currentRole === 'dev') {
+    return 'dev';
+  }
+  return position === BOSS_POSITION ? 'boss' : 'staff';
+}
 const userDoc = uid => doc(db, 'users', uid);
 
 /**
@@ -48,7 +60,10 @@ export async function ensureUserProfile(params) {
 export function subscribeToProfile(uid, onChange, onError) {
   return onSnapshot(
     userDoc(uid),
-    snap => onChange(snap.exists() ? snap.data() : null),
+    // Always derive uid from the document id so downstream code (e.g. building
+    // Firestore entry paths) never sees an undefined uid — even if a doc was
+    // created by hand without the `uid` field.
+    snap => onChange(snap.exists() ? { ...snap.data(), uid: snap.id } : null),
     err => onError?.(err),
   );
 }
@@ -68,13 +83,40 @@ export async function updatePosition(uid, position) {
   });
 }
 
-/** Update the user-editable profile fields (họ tên, chức vụ, đơn vị) at once. */
-export async function updateProfileInfo(uid, { fullName, position, unit }) {
-  await updateDoc(userDoc(uid), {
+/**
+ * Update the user-editable profile fields (họ tên, chức vụ, đơn vị) at once.
+ * Changing the chức vụ also updates `role` accordingly (Trưởng CA ⇒ boss),
+ * so permissions follow the position. Pass the current role so a `dev` account
+ * is never demoted.
+ */
+export async function updateProfileInfo(uid, { fullName, position, unit, currentRole }) {
+  const patch = {
     fullName,
     position,
     unit,
-  });
+    role: roleForPosition(position, currentRole),
+  };
+  // Registering as "Trưởng CA" auto-approves the account (it becomes a boss).
+  if (position === BOSS_POSITION) {
+    patch.approved = true;
+  }
+  await updateDoc(userDoc(uid), patch);
+}
+
+/**
+ * Manager action: change another user's chức vụ, updating the role (and, for
+ * "Trưởng CA", the approval) it implies. Allowed by the manager branch of the
+ * security rules.
+ */
+export async function setUserPosition(uid, position, currentRole) {
+  const patch = {
+    position,
+    role: roleForPosition(position, currentRole),
+  };
+  if (position === BOSS_POSITION) {
+    patch.approved = true;
+  }
+  await updateDoc(userDoc(uid), patch);
 }
 
 /** Preferred display name: the manually-entered full name, else Google name. */
@@ -107,7 +149,7 @@ export function subscribeToStaff(onChange, onError) {
   const q = query(usersCol(), where('role', '==', 'staff'));
   return onSnapshot(
     q,
-    snap => onChange(snap.docs.map(d => d.data())),
+    snap => onChange(snap.docs.map(d => ({ ...d.data(), uid: d.id }))),
     err => onError?.(err),
   );
 }

@@ -13,8 +13,10 @@ import {
   deleteUser,
   displayNameOf,
   reactivateUser,
+  setUserPosition,
   subscribeToStaff,
 } from '../services/userService';
+import PositionSelect from '../components/PositionSelect';
 import { colors, spacing } from '../theme';
 /**
  * Boss screen to manage staff accounts:
@@ -62,6 +64,14 @@ export default function ManageUsersScreen() {
     } finally {
       setBusy(null);
     }
+  };
+  // Change a user's chức vụ; picking "Trưởng CA" promotes them to boss (and
+  // they then drop off this staff list). No-op if the value is unchanged.
+  const changePosition = (u, position) => {
+    if (!position || position === u.position) {
+      return;
+    }
+    withBusy(u.uid, () => setUserPosition(u.uid, position, u.role))();
   };
   const confirmDelete = u =>
     Alert.alert(
@@ -151,34 +161,44 @@ export default function ManageUsersScreen() {
       }
       renderItem={({ item, section }) => (
         <View style={styles.card}>
-          <View style={styles.info}>
-            <Text style={styles.name}>{displayNameOf(item)}</Text>
-            {item.position ? (
-              <Text style={styles.sub}>{item.position}</Text>
-            ) : null}
-            <Text style={styles.sub}>{item.email}</Text>
-            <Text style={styles.sub}>
-              {item.unit ? item.unit : 'Chưa nhập đơn vị'}
-            </Text>
+          <View style={styles.topRow}>
+            <View style={styles.info}>
+              <Text style={styles.name}>{displayNameOf(item)}</Text>
+              <Text style={styles.sub}>{item.email}</Text>
+              <Text style={styles.sub}>
+                {item.unit ? item.unit : 'Chưa nhập đơn vị'}
+              </Text>
+            </View>
+            <View style={styles.actions}>
+              {actionsFor(section.kind, item).map(a => (
+                <TouchableOpacity
+                  key={a.label}
+                  disabled={busy === item.uid}
+                  onPress={() => a.run()}
+                  style={[
+                    styles.btn,
+                    {
+                      backgroundColor: a.color,
+                    },
+                  ]}
+                >
+                  <Text style={styles.btnText}>
+                    {busy === item.uid ? '…' : a.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
-          <View style={styles.actions}>
-            {actionsFor(section.kind, item).map(a => (
-              <TouchableOpacity
-                key={a.label}
-                disabled={busy === item.uid}
-                onPress={() => a.run()}
-                style={[
-                  styles.btn,
-                  {
-                    backgroundColor: a.color,
-                  },
-                ]}
-              >
-                <Text style={styles.btnText}>
-                  {busy === item.uid ? '…' : a.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
+          <View style={styles.posRow}>
+            <Text style={styles.posLabel}>Chức vụ</Text>
+            <View style={styles.posSelect}>
+              <PositionSelect
+                value={item.position}
+                onChange={p =>
+                  changePosition(item, p)
+                }
+              />
+            </View>
           </View>
         </View>
       )}
@@ -207,14 +227,30 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   card: {
-    flexDirection: 'row',
-    alignItems: 'center',
     backgroundColor: colors.card,
     borderRadius: 10,
     padding: spacing.md,
     marginBottom: spacing.sm,
     borderWidth: 1,
     borderColor: colors.border,
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  posRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  posLabel: {
+    color: colors.textMuted,
+    fontSize: 13,
+    fontWeight: '600',
+    marginRight: spacing.sm,
+  },
+  posSelect: {
+    flex: 1,
   },
   info: {
     flex: 1,

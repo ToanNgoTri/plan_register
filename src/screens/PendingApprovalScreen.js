@@ -30,10 +30,9 @@ export default function PendingApprovalScreen() {
     if (!profile) {
       return;
     }
-    if (!fullName.trim()) {
-      Alert.alert('Thiếu họ tên', 'Vui lòng nhập họ và tên.');
-      return;
-    }
+    // Họ tên KHÔNG bắt buộc: it is pre-filled from the sign-in provider (Apple /
+    // Google). Forcing it here would violate App Store Guideline 4 for users who
+    // signed in with Apple. Only chức vụ + đơn vị are required.
     if (!position) {
       Alert.alert('Thiếu chức vụ', 'Vui lòng chọn chức vụ.');
       return;
@@ -48,6 +47,7 @@ export default function PendingApprovalScreen() {
         fullName: fullName.trim(),
         position,
         unit: unit.trim(),
+        currentRole: profile.role,
       });
       setSaved(true);
       Alert.alert('Đã lưu', 'Thông tin của bạn đã được cập nhật.');
@@ -68,7 +68,7 @@ export default function PendingApprovalScreen() {
         duyệt. Bạn sẽ dùng được ứng dụng ngay sau khi được duyệt.
       </Text>
 
-      <Text style={styles.label}>Họ và tên</Text>
+      <Text style={styles.label}>Họ và tên (không bắt buộc)</Text>
       <TextInput
         style={styles.input}
         value={fullName}

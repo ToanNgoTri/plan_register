@@ -130,6 +130,51 @@ function StaffTabs() {
     </Tab.Navigator>
   );
 }
+
+// `dev` (review/demo) role: the staff experience (register + history) PLUS the
+// user-management/approval screen. Lets an App Review account exercise every
+// feature from one login.
+function DevTabs() {
+  return (
+    <>
+      <BossAlertListener />
+      <Tab.Navigator screenOptions={screenOptions}>
+        <Tab.Screen
+          name="Register"
+          component={RegisterPlanScreen}
+          options={{
+            title: 'Đăng ký',
+            tabBarIcon: tabIcon('📝'),
+          }}
+        />
+        <Tab.Screen
+          name="History"
+          component={HistoryScreen}
+          options={{
+            title: 'Lịch sử',
+            tabBarIcon: tabIcon('🗓️'),
+          }}
+        />
+        <Tab.Screen
+          name="ManageUsers"
+          component={ManageUsersScreen}
+          options={{
+            title: 'Phê duyệt',
+            tabBarIcon: tabIcon('👥'),
+          }}
+        />
+        <Tab.Screen
+          name="Settings"
+          component={SettingsScreen}
+          options={{
+            title: 'Cài đặt',
+            tabBarIcon: tabIcon('⚙️'),
+          }}
+        />
+      </Tab.Navigator>
+    </>
+  );
+}
 function Splash() {
   return (
     <View style={styles.splash}>
@@ -144,6 +189,7 @@ export default function RootNavigator() {
     profile,
     profileError,
     isBoss,
+    isDev,
     isApproved,
     isActive,
   } = useAuth();
@@ -174,7 +220,7 @@ export default function RootNavigator() {
     ) : (
       <Splash />
     );
-  } else if (!isBoss && !isApproved) {
+  } else if (!isBoss && !isDev && !isApproved) {
     // Signed in staff, not yet approved → locked out of all features.
     content = (
       <Stack.Navigator
@@ -185,7 +231,7 @@ export default function RootNavigator() {
         <Stack.Screen name="Pending" component={PendingApprovalScreen} />
       </Stack.Navigator>
     );
-  } else if (!isBoss && !isActive) {
+  } else if (!isBoss && !isDev && !isActive) {
     // Approved but deactivated (e.g. moved elsewhere) → locked out.
     content = (
       <Stack.Navigator
@@ -197,7 +243,7 @@ export default function RootNavigator() {
       </Stack.Navigator>
     );
   } else {
-    content = isBoss ? <BossTabs /> : <StaffTabs />;
+    content = isBoss ? <BossTabs /> : isDev ? <DevTabs /> : <StaffTabs />;
   }
   return <NavigationContainer>{content}</NavigationContainer>;
 }

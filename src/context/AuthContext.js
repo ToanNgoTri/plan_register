@@ -16,6 +16,8 @@ import {
 } from '../services/userService';
 import {
   configureGoogleSignin,
+  signInWithApple,
+  signInWithEmail,
   signInWithGoogle,
   signOut as doSignOut,
 } from '../services/authService';
@@ -25,6 +27,7 @@ import {
   scheduleWeekdayReminders,
   setupNotifications,
 } from '../services/notificationService';
+import { BOSS_POSITION } from '../config/constants';
 const AuthContext = createContext(undefined);
 export function AuthProvider({ children }) {
   const [initializing, setInitializing] = useState(true);
@@ -100,7 +103,13 @@ export function AuthProvider({ children }) {
       loadProfile(user);
     }
   }, [loadProfile]);
-  const isBoss = profile?.role === 'boss';
+  // A user is a boss if their role is 'boss' OR their chức vụ is "Trưởng CA"
+  // (the position alone grants boss permissions — see BOSS_POSITION).
+  const isBoss =
+    profile?.role === 'boss' || profile?.position === BOSS_POSITION;
+  // `dev` is a review/demo role: it sees the staff features (register plans)
+  // AND can approve users, and is never gated by approval/active.
+  const isDev = profile?.role === 'dev';
   const isApproved = !!profile?.approved;
   // Older docs created before the `active` field default to active.
   const isActive = profile ? profile.active !== false : false;
@@ -119,10 +128,11 @@ export function AuthProvider({ children }) {
       })
       .catch(() => {});
 
-    // Only approved & active staff get the daily reminders. Bosses never
-    // register; deactivated users are locked out.
+    // Only approved & active staff get the daily reminders. Bosses (by role or
+    // by "Trưởng CA" position) never register; deactivated users are locked out.
     if (
       profile.role === 'staff' &&
+      profile.position !== BOSS_POSITION &&
       profile.approved &&
       profile.active !== false
     ) {
@@ -133,6 +143,12 @@ export function AuthProvider({ children }) {
   }, [profile]);
   const signIn = useCallback(async () => {
     await signInWithGoogle();
+  }, []);
+  const signInApple = useCallback(async () => {
+    await signInWithApple();
+  }, []);
+  const signInEmail = useCallback(async (email, password) => {
+    await signInWithEmail(email, password);
   }, []);
   const signOut = useCallback(async () => {
     await cancelAllReminders().catch(() => {});
@@ -145,9 +161,12 @@ export function AuthProvider({ children }) {
       profile,
       profileError,
       isBoss,
+      isDev,
       isApproved,
       isActive,
       signIn,
+      signInApple,
+      signInEmail,
       signOut,
       retryProfile,
     }),
@@ -157,9 +176,12 @@ export function AuthProvider({ children }) {
       profile,
       profileError,
       isBoss,
+      isDev,
       isApproved,
       isActive,
       signIn,
+      signInApple,
+      signInEmail,
       signOut,
       retryProfile,
     ],

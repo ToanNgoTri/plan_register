@@ -26,8 +26,10 @@ const ALL_PEOPLE = '__ALL__';
  * Staff: their own registration history, newest first.
  */
 export default function HistoryScreen() {
-  const { isBoss } = useAuth();
-  return isBoss ? <BossHistory /> : <StaffHistory />;
+  const { isBoss, isDev } = useAuth();
+  // `dev` (review/demo) gets the full history table so App Review can see the
+  // whole feature, not just its own entries.
+  return isBoss || isDev ? <BossHistory /> : <StaffHistory />;
 }
 function BossHistory() {
   const [date, setDate] = useState(new Date());

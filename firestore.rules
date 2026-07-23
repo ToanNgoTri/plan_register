@@ -11,14 +11,30 @@ service cloud.firestore {
     function myProfile() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
+    // Boss by explicit role OR by the "Trưởng CA" chức vụ (position alone grants
+    // boss permissions). Keep the literal in sync with BOSS_POSITION in the app.
     function isBoss() {
-      return isSignedIn() && myProfile().role == 'boss';
+      return isSignedIn()
+        && (myProfile().role == 'boss'
+            || myProfile().get('position', '') == 'Trưởng CA');
+    }
+    // `dev` is a review/demo role: staff-like features PLUS user approval.
+    function isDev() {
+      return isSignedIn() && myProfile().role == 'dev';
+    }
+    // May manage (read/approve/deactivate/delete) other user accounts.
+    function isManager() {
+      return isBoss() || isDev();
     }
     function isApprovedStaff() {
       return isSignedIn()
         && myProfile().role == 'staff'
         && myProfile().approved == true
         && myProfile().active == true;
+    }
+    // May write their own plan entries (approved staff, or a dev account).
+    function canRegister() {
+      return isApprovedStaff() || isDev();
     }
 
     // True when the given path parts (VN local day keys) are TODAY in
@@ -43,8 +59,8 @@ service cloud.firestore {
 
     // ---- users ----
     match /users/{uid} {
-      // A user can read their own profile; a boss can read everyone.
-      allow read: if isSignedIn() && (request.auth.uid == uid || isBoss());
+      // A user can read their own profile; a manager (boss/dev) reads everyone.
+      allow read: if isSignedIn() && (request.auth.uid == uid || isManager());
 
       // New users create their own profile, but cannot self-approve or make
       // themselves a boss. They start active but unapproved.
@@ -54,16 +70,32 @@ service cloud.firestore {
         && request.resource.data.approved == false
         && request.resource.data.active == true;
 
-      // A user may update only their unit / fcmToken (not role/approved/active).
-      // A boss may update anyone (e.g. to approve or deactivate them).
-      allow update: if isBoss()
+      // A manager (boss/dev) may update anyone (e.g. to approve or deactivate).
+      // A user may update their own profile but NEVER their `active` flag, and
+      // their `role`/`approved` must follow their chức vụ:
+      //   - "Trưởng CA"  ⇒ role must be 'boss' AND approved must be true
+      //                    (picking this chức vụ self-promotes + auto-approves).
+      //   - any other    ⇒ role must be 'staff' AND approved unchanged
+      //                    (no self-approval, no self-granting dev/boss).
+      // A `dev` account is exempt (keeps its role/approved unchanged).
+      allow update: if isManager()
         || (request.auth.uid == uid
-            && request.resource.data.role == resource.data.role
-            && request.resource.data.approved == resource.data.approved
-            && request.resource.data.active == resource.data.active);
+            && request.resource.data.active == resource.data.active
+            && (
+                 (resource.data.role == 'dev'
+                  && request.resource.data.role == 'dev'
+                  && request.resource.data.approved == resource.data.approved)
+                 ||
+                 (request.resource.data.role ==
+                    (request.resource.data.get('position', '') == 'Trưởng CA'
+                      ? 'boss' : 'staff')
+                  && request.resource.data.approved ==
+                    (request.resource.data.get('position', '') == 'Trưởng CA'
+                      ? true : resource.data.approved))
+               ));
 
-      // A boss may delete anyone; a user may delete their own account.
-      allow delete: if isBoss() || request.auth.uid == uid;
+      // A manager may delete anyone; a user may delete their own account.
+      allow delete: if isManager() || request.auth.uid == uid;
     }
 
     // ---- plan history: history/{year}/months/{month}/days/{day}/entries/{uid}
@@ -78,12 +110,12 @@ service cloud.firestore {
       //    collectionGroup('entries').where('uid','==', me) query pass the
       //    Firestore query-rules analysis (which matches on the field, not the
       //    doc id).
-      allow read: if isBoss()
+      allow read: if isManager()
         || (isSignedIn() && request.auth.uid == uid)
         || (isSignedIn() && resource != null && resource.data.uid == request.auth.uid);
 
-      // Approved staff may write only their own entry.
-      allow write: if isApprovedStaff()
+      // Approved staff (or a dev account) may write only their own entry.
+      allow write: if canRegister()
         && request.auth.uid == uid
         && request.resource.data.uid == request.auth.uid;
     }
@@ -94,7 +126,7 @@ service cloud.firestore {
     // the History screen cannot see other users. (Rules are additive: a doc is
     // readable if Rule A OR Rule B allows it.)
     match /history/{year}/months/{month}/days/{day}/entries/{uid} {
-      allow read: if isApprovedStaff() && isTodayVN(year, month, day);
+      allow read: if (isApprovedStaff() || isDev()) && isTodayVN(year, month, day);
     }
   }
 }
