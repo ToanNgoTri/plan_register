@@ -59,9 +59,16 @@ function DatePicker({ visible, value, onChange, onClose }) {
           <DateTimePicker
             value={value}
             mode="date"
-            display="inline"
+            // Spinner (wheel) — single-tap, compact, never overflows the sheet
+            // (the inline calendar's intrinsic size does).
+            display="spinner"
+            // App is a light theme on a white sheet — force the picker to light
+            // so the numbers are dark (not white/invisible) even in dark mode.
+            themeVariant="light"
+            accentColor={colors.primary}
             maximumDate={new Date()}
             onChange={handleChange}
+            style={styles.pickerWheel}
           />
           <TouchableOpacity style={styles.pickerDone} onPress={onClose}>
             <Text style={styles.pickerDoneText}>Xong</Text>
@@ -271,6 +278,11 @@ const styles = StyleSheet.create({
     backgroundColor: colors.card,
     borderRadius: 14,
     padding: spacing.md,
+    overflow: 'hidden',
+  },
+  pickerWheel: {
+    width: '100%',
+    height: 216,
   },
   pickerDone: {
     marginTop: spacing.sm,
