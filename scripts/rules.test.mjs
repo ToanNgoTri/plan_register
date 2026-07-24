@@ -125,6 +125,12 @@ await check('chief (Trưởng CA) lists PAST day all entries', true, () =>
 // reads any user profile → allowed (boss/manager read)
 await check('chief (Trưởng CA) reads users', true, () =>
   getDoc(doc(chief, 'users', 'staffA')));
+// manager lists the WHOLE users collection (ManageUsers "show all") → allowed
+await check('chief (Trưởng CA) lists ALL users', true, () =>
+  getDocs(collection(chief, 'users')));
+// a plain staff cannot list all users
+await check('staff lists ALL users (deny)', false, () =>
+  getDocs(collection(staffA, 'users')));
 
 // ---- self profile update: role must follow chức vụ ----
 const selfDoc = () => doc(staffA, 'users', 'staffA');

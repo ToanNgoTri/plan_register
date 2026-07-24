@@ -142,13 +142,13 @@ export async function listApprovedStaff() {
 }
 
 /**
- * Live list of every staff account (any state). The boss management screen
- * splits it into pending / active / inactive.
+ * Live list of EVERY user account (staff, boss, and dev — any state). The
+ * management screen splits it into pending / active / inactive. Allowed for a
+ * manager (boss/dev), who may read all user docs per the security rules.
  */
-export function subscribeToStaff(onChange, onError) {
-  const q = query(usersCol(), where('role', '==', 'staff'));
+export function subscribeToUsers(onChange, onError) {
   return onSnapshot(
-    q,
+    usersCol(),
     snap => onChange(snap.docs.map(d => ({ ...d.data(), uid: d.id }))),
     err => onError?.(err),
   );

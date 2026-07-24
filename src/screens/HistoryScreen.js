@@ -2,7 +2,9 @@ import React, { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Modal,
   Platform,
+  Pressable,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -17,6 +19,58 @@ import { getDailyStatus, getMyEntry } from '../services/planService';
 import { displayNameOf } from '../services/userService';
 import { formatDateVi, toDateKey } from '../utils/date';
 import { colors, spacing } from '../theme';
+
+/**
+ * Date picker that opens the calendar in a SINGLE tap.
+ *  - iOS: a modal showing the wheel/calendar directly (avoids the two-step
+ *    "compact" default picker where you must tap the pill to expand it).
+ *  - Android: the native date dialog (already single-tap).
+ */
+function DatePicker({ visible, value, onChange, onClose }) {
+  if (!visible) {
+    return null;
+  }
+  const handleChange = (event, selected) => {
+    if (Platform.OS === 'android') {
+      onClose();
+      if (event.type === 'set' && selected) {
+        onChange(selected);
+      }
+      return;
+    }
+    if (selected) {
+      onChange(selected);
+    }
+  };
+  if (Platform.OS !== 'ios') {
+    return (
+      <DateTimePicker
+        value={value}
+        mode="date"
+        maximumDate={new Date()}
+        onChange={handleChange}
+      />
+    );
+  }
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose}>
+      <Pressable style={styles.pickerBackdrop} onPress={onClose}>
+        <Pressable style={styles.pickerSheet}>
+          <DateTimePicker
+            value={value}
+            mode="date"
+            display="inline"
+            maximumDate={new Date()}
+            onChange={handleChange}
+          />
+          <TouchableOpacity style={styles.pickerDone} onPress={onClose}>
+            <Text style={styles.pickerDoneText}>Xong</Text>
+          </TouchableOpacity>
+        </Pressable>
+      </Pressable>
+    </Modal>
+  );
+}
 
 // Boss history table: filter by an individual cán bộ / phó trưởng (by name),
 // plus an "all" option. Sentinel value for the "all" entry.
@@ -73,12 +127,6 @@ function BossHistory() {
       d.setDate(prev.getDate() + delta);
       return d.getTime() > Date.now() ? prev : d; // never past today
     });
-  const onPickerChange = (event, selected) => {
-    setShowPicker(Platform.OS === 'ios'); // iOS keeps the spinner open
-    if (event.type === 'set' && selected) {
-      setDate(selected);
-    }
-  };
   return (
     <View style={styles.flex}>
       <View style={styles.nav}>
@@ -101,14 +149,12 @@ function BossHistory() {
         </TouchableOpacity>
       </View>
 
-      {showPicker && (
-        <DateTimePicker
-          value={date}
-          mode="date"
-          maximumDate={new Date()}
-          onChange={onPickerChange}
-        />
-      )}
+      <DatePicker
+        visible={showPicker}
+        value={date}
+        onChange={setDate}
+        onClose={() => setShowPicker(false)}
+      />
 
       <View style={styles.filterBar}>
         <Text style={styles.filterLabel}>Lọc theo cán bộ</Text>
@@ -167,12 +213,6 @@ function StaffHistory() {
       d.setDate(prev.getDate() + delta);
       return d.getTime() > Date.now() ? prev : d; // never past today
     });
-  const onPickerChange = (event, selected) => {
-    setShowPicker(Platform.OS === 'ios');
-    if (event.type === 'set' && selected) {
-      setDate(selected);
-    }
-  };
   return (
     <View style={styles.flex}>
       <View style={styles.nav}>
@@ -195,14 +235,12 @@ function StaffHistory() {
         </TouchableOpacity>
       </View>
 
-      {showPicker && (
-        <DateTimePicker
-          value={date}
-          mode="date"
-          maximumDate={new Date()}
-          onChange={onPickerChange}
-        />
-      )}
+      <DatePicker
+        visible={showPicker}
+        value={date}
+        onChange={setDate}
+        onClose={() => setShowPicker(false)}
+      />
 
       {loading ? (
         <ActivityIndicator style={styles.loader} />
@@ -222,6 +260,29 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
     backgroundColor: colors.bg,
+  },
+  pickerBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  pickerSheet: {
+    backgroundColor: colors.card,
+    borderRadius: 14,
+    padding: spacing.md,
+  },
+  pickerDone: {
+    marginTop: spacing.sm,
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  pickerDoneText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 15,
   },
   container: {
     padding: spacing.md,

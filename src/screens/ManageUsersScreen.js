@@ -14,29 +14,29 @@ import {
   displayNameOf,
   reactivateUser,
   setUserPosition,
-  subscribeToStaff,
+  subscribeToUsers,
 } from '../services/userService';
 import PositionSelect from '../components/PositionSelect';
 import { colors, spacing } from '../theme';
 /**
- * Boss screen to manage staff accounts:
+ * Boss screen to manage ALL user accounts (staff, boss, dev):
  *  - Chờ duyệt  → Duyệt / Xóa
  *  - Đang hoạt động → Ngừng hoạt động / Xóa
  *  - Ngừng hoạt động → Kích hoạt lại / Xóa
  */
 export default function ManageUsersScreen() {
-  const [staff, setStaff] = useState([]);
+  const [users, setUsers] = useState([]);
   const [busy, setBusy] = useState(null);
   useEffect(() => {
-    const unsub = subscribeToStaff(setStaff, e =>
+    const unsub = subscribeToUsers(setUsers, e =>
       Alert.alert('Lỗi', e.message),
     );
     return unsub;
   }, []);
   const sections = useMemo(() => {
-    const pending = staff.filter(u => !u.approved);
-    const active = staff.filter(u => u.approved && u.active !== false);
-    const inactive = staff.filter(u => u.approved && u.active === false);
+    const pending = users.filter(u => !u.approved);
+    const active = users.filter(u => u.approved && u.active !== false);
+    const inactive = users.filter(u => u.approved && u.active === false);
     return [
       {
         title: `Chờ duyệt (${pending.length})`,
@@ -54,7 +54,7 @@ export default function ManageUsersScreen() {
         data: inactive,
       },
     ];
-  }, [staff]);
+  }, [users]);
   const withBusy = (uid, fn) => async () => {
     try {
       setBusy(uid);
@@ -66,7 +66,7 @@ export default function ManageUsersScreen() {
     }
   };
   // Change a user's chức vụ; picking "Trưởng CA" promotes them to boss (and
-  // they then drop off this staff list). No-op if the value is unchanged.
+  // auto-approves). No-op if the value is unchanged.
   const changePosition = (u, position) => {
     if (!position || position === u.position) {
       return;

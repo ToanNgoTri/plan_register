@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   StyleSheet,
@@ -22,6 +22,17 @@ export default function PendingApprovalScreen() {
   const [position, setPosition] = useState(profile?.position ?? '');
   const [unit, setUnit] = useState(profile?.unit || 'Công an phường Hàng Gòn');
   const [saving, setSaving] = useState(false);
+  // True once the user starts editing the name — so we stop auto-syncing it.
+  const [nameTouched, setNameTouched] = useState(false);
+
+  // The name from Sign in with Apple / Google is written to the profile a moment
+  // AFTER this screen mounts, so seed it once it arrives (unless the user has
+  // already started typing).
+  useEffect(() => {
+    if (!nameTouched && profile?.fullName) {
+      setFullName(profile.fullName);
+    }
+  }, [profile?.fullName, nameTouched]);
   // True once info has been saved — locks the button into a "pending" state.
   const [saved, setSaved] = useState(
     !!(profile?.fullName && profile.fullName.trim()),
@@ -73,6 +84,7 @@ export default function PendingApprovalScreen() {
         style={styles.input}
         value={fullName}
         onChangeText={t => {
+          setNameTouched(true);
           setFullName(t);
           setSaved(false); // editing again re-enables saving
         }}
