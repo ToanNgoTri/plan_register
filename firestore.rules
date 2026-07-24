@@ -60,7 +60,13 @@ service cloud.firestore {
     // ---- users ----
     match /users/{uid} {
       // A user can read their own profile; a manager (boss/dev) reads everyone.
-      allow read: if isSignedIn() && (request.auth.uid == uid || isManager());
+      // Any signed-in user may also read a "Trưởng CA" profile — used to detect
+      // whether a Trưởng CA already exists (so the option can be hidden). This
+      // only exposes the commander's profile, which is not sensitive here.
+      allow read: if isSignedIn()
+        && (request.auth.uid == uid
+            || isManager()
+            || resource.data.get('position', '') == 'Trưởng CA');
 
       // New users create their own profile, but cannot self-approve or make
       // themselves a boss. They start active but unapproved.

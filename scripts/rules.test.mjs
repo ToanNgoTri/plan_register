@@ -131,6 +131,9 @@ await check('chief (Trưởng CA) lists ALL users', true, () =>
 // a plain staff cannot list all users
 await check('staff lists ALL users (deny)', false, () =>
   getDocs(collection(staffA, 'users')));
+// any signed-in user MAY query for the Trưởng CA (to detect one exists)
+await check('staff queries Trưởng CA users (allow)', true, () =>
+  getDocs(query(collection(staffA, 'users'), where('position', '==', 'Trưởng CA'))));
 
 // ---- self profile update: role must follow chức vụ ----
 const selfDoc = () => doc(staffA, 'users', 'staffA');

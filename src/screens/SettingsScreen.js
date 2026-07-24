@@ -17,10 +17,12 @@ import { useAuth } from '../context/AuthContext';
 import {
   deleteOwnAccount,
   displayNameOf,
+  subscribeChiefExists,
   updateProfileInfo,
 } from '../services/userService';
 import { clearAvatar, getAvatar, setAvatar } from '../services/avatarStore';
 import PositionSelect from '../components/PositionSelect';
+import { BOSS_POSITION, POSITIONS } from '../config/constants';
 import { colors, spacing } from '../theme';
 
 /**
@@ -174,6 +176,13 @@ function EditProfileModal({ visible, profile, onClose, onDeleted }) {
   const [unit, setUnit] = useState('');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  // Hide "Trưởng CA" if one already exists (unless this user IS that Trưởng CA).
+  const [chiefExists, setChiefExists] = useState(false);
+  useEffect(() => subscribeChiefExists(setChiefExists, () => {}), []);
+  const positionOptions =
+    chiefExists && position !== BOSS_POSITION
+      ? POSITIONS.filter(p => p !== BOSS_POSITION)
+      : POSITIONS;
 
   // Seed the form each time it opens with the current profile values.
   useEffect(() => {
@@ -256,7 +265,11 @@ function EditProfileModal({ visible, profile, onClose, onDeleted }) {
           />
 
           <Text style={[styles.label, styles.labelSpaced]}>Chức vụ</Text>
-          <PositionSelect value={position} onChange={setPosition} />
+          <PositionSelect
+            value={position}
+            options={positionOptions}
+            onChange={setPosition}
+          />
 
           <Text style={[styles.label, styles.labelSpaced]}>
             Đơn vị / Phòng ban

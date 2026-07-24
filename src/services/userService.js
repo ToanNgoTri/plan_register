@@ -4,6 +4,7 @@ import {
   doc,
   getDoc,
   getDocs,
+  limit,
   onSnapshot,
   query,
   setDoc,
@@ -54,6 +55,20 @@ export async function ensureUserProfile(params) {
   };
   await setDoc(ref, profile);
   return profile;
+}
+
+/**
+ * Live boolean: does a "Trưởng CA" already exist? Used to hide the Trưởng CA
+ * chức vụ option once the unit already has a commander. Readable by any
+ * signed-in user (see the users read rule).
+ */
+export function subscribeChiefExists(onChange, onError) {
+  const q = query(usersCol(), where('position', '==', BOSS_POSITION), limit(1));
+  return onSnapshot(
+    q,
+    snap => onChange(!snap.empty),
+    err => onError?.(err),
+  );
 }
 
 /** Live updates for the signed-in user's own profile (approval/role/active). */

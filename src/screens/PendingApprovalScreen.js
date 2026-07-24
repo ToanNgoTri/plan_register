@@ -8,8 +8,9 @@ import {
   View,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import { updateProfileInfo } from '../services/userService';
+import { subscribeChiefExists, updateProfileInfo } from '../services/userService';
 import PositionSelect from '../components/PositionSelect';
+import { BOSS_POSITION, POSITIONS } from '../config/constants';
 import { colors, spacing } from '../theme';
 
 /**
@@ -24,6 +25,14 @@ export default function PendingApprovalScreen() {
   const [saving, setSaving] = useState(false);
   // True once the user starts editing the name — so we stop auto-syncing it.
   const [nameTouched, setNameTouched] = useState(false);
+  // Hide the "Trưởng CA" chức vụ once the unit already has one (only the first
+  // person may claim it here; a boss can still assign it in Quản lý người dùng).
+  const [chiefExists, setChiefExists] = useState(false);
+  useEffect(() => subscribeChiefExists(setChiefExists, () => {}), []);
+  const positionOptions =
+    chiefExists && position !== BOSS_POSITION
+      ? POSITIONS.filter(p => p !== BOSS_POSITION)
+      : POSITIONS;
 
   // The name from Sign in with Apple / Google is written to the profile a moment
   // AFTER this screen mounts, so seed it once it arrives (unless the user has
@@ -95,6 +104,7 @@ export default function PendingApprovalScreen() {
       <Text style={[styles.label, styles.labelSpaced]}>Chức vụ</Text>
       <PositionSelect
         value={position}
+        options={positionOptions}
         onChange={p => {
           setPosition(p);
           setSaved(false); // editing again re-enables saving
