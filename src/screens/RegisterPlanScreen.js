@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -11,12 +11,11 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import {
-  getMyEntry,
   registerPlan,
   subscribeDailyEntries,
+  subscribeMyEntry,
 } from '../services/planService';
 import { scheduleWeekdayReminders } from '../services/notificationService';
 import { useToday } from '../hooks/useToday';
@@ -51,27 +50,39 @@ export default function RegisterPlanScreen() {
     );
     return unsub;
   }, [today]);
-  const load = useCallback(async () => {
+  // Kế hoạch của chính mình hôm nay, cập nhật theo thời gian thực (không cần
+  // rời màn hình rồi quay lại). Trong lúc đang gõ thì KHÔNG ghi đè ô nhập.
+  const editingRef = useRef(editing);
+  editingRef.current = editing;
+  useEffect(() => {
     if (!profile) {
       return;
     }
     setLoading(true);
-    try {
-      const entry = await getMyEntry(profile.uid, today);
-      setExisting(entry);
-      setContent(entry?.content ?? '');
-      // Registered → show read-only view; not yet → open the input.
-      setEditing(!entry);
-    } finally {
-      setLoading(false);
-    }
+    let first = true;
+    const unsub = subscribeMyEntry(
+      profile.uid,
+      today,
+      entry => {
+        setExisting(entry);
+        const isFirst = first;
+        if (isFirst) {
+          first = false;
+          setLoading(false);
+        }
+        // Ảnh chụp đầu tiên (mở màn hình / sang ngày mới) luôn đồng bộ; các lần
+        // sau chỉ đồng bộ khi người dùng không đang soạn dở.
+        if (isFirst || !editingRef.current) {
+          setContent(entry?.content ?? '');
+          // Registered → show read-only view; not yet → open the input.
+          setEditing(!entry);
+        }
+      },
+      () => setLoading(false),
+    );
+    return unsub;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile?.uid, today]);
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load]),
-  );
   const submit = async () => {
     if (!profile) {
       return;
@@ -85,7 +96,8 @@ export default function RegisterPlanScreen() {
       await registerPlan(profile, content, today);
       // Registered today → drop today's reminder from the schedule.
       await scheduleWeekdayReminders([toDateKey(today)]).catch(() => {});
-      await load();
+      // Không cần nạp lại: listener sẽ đẩy về bản ghi vừa lưu.
+      setEditing(false);
       Alert.alert(
         'Thành công',
         existing

@@ -1,11 +1,13 @@
+import { Platform } from 'react-native';
 import { doc, onSnapshot } from '@react-native-firebase/firestore';
 import VersionCheck from 'react-native-version-check';
 import { db } from './firebase';
+import { STORE_URL } from '../config/constants';
 
 /**
  * Version config you control, stored at Firestore `config/app`:
  *   { minVersion?: string, latestVersion?: string, updateUrl?: string,
- *     message?: string }
+ *     updateUrlIos?: string, updateUrlAndroid?: string, message?: string }
  * Bumping `minVersion` above the installed version forces an update — this is
  * the reliable path for internally-distributed builds that are not on a store.
  */
@@ -42,6 +44,22 @@ export function subscribeToVersionConfig(onChange, onError) {
     snap => onChange(snap.exists() ? snap.data() : null),
     err => onError?.(err),
   );
+}
+
+/**
+ * Đường dẫn cho nút "Cập nhật ngay", đúng nền tảng đang chạy. Thứ tự ưu tiên:
+ *   1. `config.updateUrlIos` / `config.updateUrlAndroid` — ghi đè riêng từng
+ *      nền tảng từ Firestore (đổi được mà không cần phát hành bản mới).
+ *   2. `config.updateUrl` — ghi đè chung (vd. link tải APK nội bộ).
+ *   3. Link store gắn sẵn trong app (App Store cho iOS, Play Store cho Android).
+ *   4. Link store do react-native-version-check dò được.
+ */
+export function resolveUpdateUrl(config, store) {
+  const perPlatform = Platform.select({
+    ios: config?.updateUrlIos,
+    android: config?.updateUrlAndroid,
+  });
+  return perPlatform || config?.updateUrl || STORE_URL || store?.storeUrl;
 }
 
 /**

@@ -12,6 +12,7 @@ import {
   checkForUpdate,
   compareVersions,
   getCurrentAppVersion,
+  resolveUpdateUrl,
   subscribeToVersionConfig,
 } from '../services/versionService';
 import { colors, spacing } from '../theme';
@@ -57,7 +58,8 @@ export default function ForceUpdateGate() {
   const storeBlocked = store?.isNeeded === true;
   const needed = minBlocked || storeBlocked;
   const latestVersion = config?.latestVersion ?? store?.latestVersion;
-  const updateUrl = config?.updateUrl ?? store?.storeUrl;
+  // Link store theo đúng nền tảng đang chạy (iOS → App Store, Android → Play).
+  const updateUrl = resolveUpdateUrl(config, store);
   const openStore = () => {
     if (updateUrl) {
       Linking.openURL(updateUrl).catch(() => {});

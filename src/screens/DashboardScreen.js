@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
@@ -6,9 +6,8 @@ import {
   StyleSheet,
   Text,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
 import DailyStatusTable from '../components/DailyStatusTable';
-import { getDailyStatus } from '../services/planService';
+import { subscribeDailyStatus } from '../services/planService';
 import { useToday } from '../hooks/useToday';
 import { formatDateVi } from '../utils/date';
 import { colors, spacing } from '../theme';
@@ -18,26 +17,30 @@ export default function DashboardScreen() {
   const [loading, setLoading] = useState(true);
   // Tự đổi khi sang ngày mới, kể cả khi app mở suốt qua nửa đêm.
   const today = useToday();
-  const load = useCallback(async () => {
+  // Bảng cập nhật theo thời gian thực: có người đăng ký / sửa kế hoạch, hoặc
+  // danh sách cán bộ thay đổi → tự vẽ lại, không cần kéo để tải lại.
+  // `retry` chỉ dùng khi listener bị lỗi (mất mạng / hết phiên) để nối lại.
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
     setLoading(true);
-    try {
-      setRows(await getDailyStatus(today));
-    } finally {
-      setLoading(false);
-    }
-  }, [today]);
-  // `load` đổi khi sang ngày mới → useFocusEffect chạy lại và nạp bảng ngày mới
-  // ngay cả khi màn hình đang mở sẵn.
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [load]),
-  );
+    const unsub = subscribeDailyStatus(
+      today,
+      next => {
+        setRows(next);
+        setLoading(false);
+      },
+      () => setLoading(false),
+    );
+    return unsub;
+  }, [today, retry]);
+  const reconnect = useCallback(() => setRetry(n => n + 1), []);
   return (
     <ScrollView
       style={styles.flex}
       contentContainerStyle={styles.container}
-      refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}
+      refreshControl={
+        <RefreshControl refreshing={loading} onRefresh={reconnect} />
+      }
     >
       <Text style={styles.date}>{formatDateVi(today)}</Text>
       {loading && rows.length === 0 ? (

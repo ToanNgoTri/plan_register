@@ -3,7 +3,6 @@ import {
   deleteDoc,
   doc,
   getDoc,
-  getDocs,
   limit,
   onSnapshot,
   query,
@@ -144,16 +143,23 @@ export async function updateFcmToken(uid, token) {
   });
 }
 
-/** Approved AND active staff — the boss daily table + reminder audience. */
-export async function listApprovedStaff() {
+/**
+ * Approved AND active staff — the boss daily table's audience, live: the table
+ * stays correct when a user is approved / deactivated / deleted while the
+ * screen is open. Manager-only (a manager may read every user doc per rules).
+ */
+export function subscribeApprovedStaff(onChange, onError) {
   const q = query(
     usersCol(),
     where('role', '==', 'staff'),
     where('approved', '==', true),
     where('active', '==', true),
   );
-  const snap = await getDocs(q);
-  return snap.docs.map(d => d.data());
+  return onSnapshot(
+    q,
+    snap => onChange(snap.docs.map(d => ({ ...d.data(), uid: d.id }))),
+    err => onError?.(err),
+  );
 }
 
 /**

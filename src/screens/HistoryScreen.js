@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -11,11 +11,13 @@ import {
   View,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import DailyStatusTable from '../components/DailyStatusTable';
 import PositionSelect from '../components/PositionSelect';
-import { getDailyStatus, getMyEntry } from '../services/planService';
+import {
+  subscribeDailyStatus,
+  subscribeMyEntry,
+} from '../services/planService';
 import { displayNameOf } from '../services/userService';
 import { useFollowToday } from '../hooks/useToday';
 import { formatDateVi, toDateKey } from '../utils/date';
@@ -119,19 +121,20 @@ function BossHistory() {
         : rows.filter(r => r.user?.uid === personFilter),
     [rows, personFilter],
   );
-  const load = useCallback(async d => {
+  // Bảng của ngày đang xem cập nhật theo thời gian thực (đăng ký mới, sửa nội
+  // dung, duyệt/khoá tài khoản) — kể cả khi đang mở màn hình này.
+  useEffect(() => {
     setLoading(true);
-    try {
-      setRows(await getDailyStatus(d));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-  useFocusEffect(
-    useCallback(() => {
-      load(date);
-    }, [load, date]),
-  );
+    const unsub = subscribeDailyStatus(
+      date,
+      next => {
+        setRows(next);
+        setLoading(false);
+      },
+      () => setLoading(false),
+    );
+    return unsub;
+  }, [date]);
   const shiftDay = delta =>
     setDate(prev => {
       const d = new Date(prev);
@@ -200,26 +203,25 @@ function StaffHistory() {
   // Xem mục BossHistory: tự bám theo ngày mới khi đang xem "hôm nay".
   const todayKey = useFollowToday(setDate);
   const isToday = toDateKey(date) === todayKey;
-  const load = useCallback(
-    async d => {
-      if (!profile) {
-        return;
-      }
-      setLoading(true);
-      try {
-        setEntry(await getMyEntry(profile.uid, d));
-      } finally {
+  // Kế hoạch của chính mình cho ngày đang xem, cập nhật theo thời gian thực
+  // (ví dụ vừa sửa ở màn hình Đăng ký, hoặc sửa từ thiết bị khác).
+  useEffect(() => {
+    if (!profile) {
+      return;
+    }
+    setLoading(true);
+    const unsub = subscribeMyEntry(
+      profile.uid,
+      date,
+      next => {
+        setEntry(next);
         setLoading(false);
-      }
-    },
+      },
+      () => setLoading(false),
+    );
+    return unsub;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [profile?.uid],
-  );
-  useFocusEffect(
-    useCallback(() => {
-      load(date);
-    }, [load, date]),
-  );
+  }, [profile?.uid, date]);
   const shiftDay = delta =>
     setDate(prev => {
       const d = new Date(prev);

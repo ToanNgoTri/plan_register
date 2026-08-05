@@ -12,7 +12,7 @@ import {
 } from '@react-native-firebase/firestore';
 import { db } from './firebase';
 import { dateParts, toDateKey } from '../utils/date';
-import { displayNameOf, listApprovedStaff } from './userService';
+import { displayNameOf, subscribeApprovedStaff } from './userService';
 /**
  * Firestore path for a day's registrations:
  *   history/{year}/months/{month}/days/{day}/entries/{uid}
@@ -57,10 +57,16 @@ export async function registerPlan(user, content, date = new Date()) {
   await setDoc(entryDocRef(date, user.uid), entry);
 }
 
-/** The signed-in user's entry for a given day, or null. */
-export async function getMyEntry(uid, date = new Date()) {
-  const snap = await getDoc(entryDocRef(date, uid));
-  return snap.exists() ? snap.data() : null;
+/**
+ * The signed-in user's entry for `date`, live: pushes a new value whenever the
+ * entry is created or edited (allowed by rule A — own entry, any day).
+ */
+export function subscribeMyEntry(uid, date, onChange, onError) {
+  return onSnapshot(
+    entryDocRef(date, uid),
+    snap => onChange(snap.exists() ? snap.data() : null),
+    err => onError?.(err),
+  );
 }
 
 /** Live entries for a whole day (used by the boss table + boss alert). */
@@ -72,18 +78,10 @@ export function subscribeDailyEntries(date, onChange, onError) {
   );
 }
 
-/**
- * Boss daily table: every approved staff member joined with whether they
- * registered on `date`. Rows with registered=false are shown in red.
- */
-export async function getDailyStatus(date = new Date()) {
-  const [staff, entriesSnap] = await Promise.all([
-    listApprovedStaff(),
-    getDocs(entriesColRef(date)),
-  ]);
+/** Joins the approved-staff list with a day's entries into boss table rows. */
+function buildDailyRows(staff, entries) {
   const byUid = new Map();
-  entriesSnap.docs.forEach(d => {
-    const e = d.data();
+  entries.forEach(e => {
     byUid.set(e.uid, e);
   });
   const staffUids = new Set(staff.map(s => s.uid));
@@ -124,6 +122,46 @@ export async function getDailyStatus(date = new Date()) {
   return rows.sort((a, b) =>
     a.user.displayName.localeCompare(b.user.displayName, 'vi'),
   );
+}
+
+/**
+ * Boss daily table, live: every approved staff member joined with whether they
+ * registered on `date` (rows with registered=false are shown in red).
+ *
+ * Watches BOTH sources that make up a row:
+ *   - the day's entries (someone registers / edits their plan), and
+ *   - the approved-staff list (someone is approved / deactivated / deleted),
+ * and pushes recomputed rows on every change — no manual reload needed.
+ *
+ * `onChange` only fires once both sources have delivered a first snapshot, so
+ * the table never flashes an "everyone missing" state.
+ * Returns an unsubscribe function that tears down both listeners.
+ */
+export function subscribeDailyStatus(date, onChange, onError) {
+  let staff = null;
+  let entries = null;
+  const emit = () => {
+    if (staff && entries) {
+      onChange(buildDailyRows(staff, entries));
+    }
+  };
+  const fail = err => onError?.(err);
+  const unsubStaff = subscribeApprovedStaff(list => {
+    staff = list;
+    emit();
+  }, fail);
+  const unsubEntries = onSnapshot(
+    entriesColRef(date),
+    snap => {
+      entries = snap.docs.map(d => d.data());
+      emit();
+    },
+    fail,
+  );
+  return () => {
+    unsubStaff();
+    unsubEntries();
+  };
 }
 
 /**

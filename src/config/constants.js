@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 /**
  * App-wide configuration.
  *
@@ -28,3 +30,17 @@ export const ANDROID_CHANNEL_ID = 'plan-register-default';
  */
 export const POSITIONS = ['Trưởng CA', 'Phó Trưởng CA', 'Cán bộ'];
 export const BOSS_POSITION = 'Trưởng CA';
+
+/**
+ * Trang cài đặt app trên store, theo từng nền tảng. Nút "Cập nhật ngay" của
+ * ForceUpdateGate mở đúng link của nền tảng đang chạy (xem
+ * versionService.resolveUpdateUrl để biết thứ tự ưu tiên).
+ */
+export const APP_STORE_URL = 'https://apps.apple.com/app/id6792317913';
+export const PLAY_STORE_URL =
+  'https://play.google.com/store/apps/details?id=com.planregister';
+export const STORE_URL = Platform.select({
+  ios: APP_STORE_URL,
+  android: PLAY_STORE_URL,
+  default: PLAY_STORE_URL,
+});

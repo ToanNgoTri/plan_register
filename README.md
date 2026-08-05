@@ -204,7 +204,9 @@ cần cập nhật. Có 2 nguồn kích hoạt (chặn nếu **một trong hai**
    config/app = {
      minVersion:    "1.3.0",     // < phiên bản này thì bị buộc cập nhật
      latestVersion: "1.3.0",     // (tùy chọn) hiển thị
-     updateUrl:     "https://…", // link tải APK nội bộ hoặc trang store
+     updateUrl:     "https://…", // (tùy chọn) ghi đè chung, vd link APK nội bộ
+     updateUrlIos:     "https://…", // (tùy chọn) ghi đè riêng iOS
+     updateUrlAndroid: "https://…", // (tùy chọn) ghi đè riêng Android
      message:       "…"          // (tùy chọn) nội dung tùy biến
    }
    ```
@@ -216,8 +218,17 @@ cần cập nhật. Có 2 nguồn kích hoạt (chặn nếu **một trong hai**
    App Store khi app đã publish.
 
 App version lấy từ `versionName` (Android) / `CFBundleShortVersionString` (iOS). Tăng số
-này mỗi lần build bản mới. Link nút "Cập nhật ngay" ưu tiên `config.updateUrl`, nếu trống
-thì dùng URL store.
+này mỗi lần build bản mới.
+
+Link nút **"Cập nhật ngay"** (`versionService.resolveUpdateUrl`) chọn theo nền tảng đang
+chạy, ưu tiên từ trên xuống:
+
+1. `config.updateUrlIos` / `config.updateUrlAndroid` — ghi đè riêng từng nền tảng.
+2. `config.updateUrl` — ghi đè chung (vd link APK nội bộ).
+3. Link store gắn sẵn trong `src/config/constants.js`:
+   - iOS — <https://apps.apple.com/app/id6792317913>
+   - Android — <https://play.google.com/store/apps/details?id=com.planregister>
+4. Link store do `react-native-version-check` tự dò.
 
 > Test nhanh khi chưa lên store: tạo `config/app` với `minVersion` cao hơn version hiện
 > tại (vd `"9.9.9"`) → gate hiện ngay.
