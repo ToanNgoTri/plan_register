@@ -9,13 +9,15 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import DailyStatusTable from '../components/DailyStatusTable';
 import { getDailyStatus } from '../services/planService';
+import { useToday } from '../hooks/useToday';
 import { formatDateVi } from '../utils/date';
 import { colors, spacing } from '../theme';
 /** Boss home: today's registration status for all approved staff. */
 export default function DashboardScreen() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const today = new Date();
+  // Tự đổi khi sang ngày mới, kể cả khi app mở suốt qua nửa đêm.
+  const today = useToday();
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -23,8 +25,9 @@ export default function DashboardScreen() {
     } finally {
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [today]);
+  // `load` đổi khi sang ngày mới → useFocusEffect chạy lại và nạp bảng ngày mới
+  // ngay cả khi màn hình đang mở sẵn.
   useFocusEffect(
     useCallback(() => {
       load();

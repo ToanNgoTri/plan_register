@@ -27,6 +27,7 @@ import {
   scheduleWeekdayReminders,
   setupNotifications,
 } from '../services/notificationService';
+import { useTodayKey } from '../hooks/useToday';
 import { BOSS_POSITION } from '../config/constants';
 const AuthContext = createContext(undefined);
 export function AuthProvider({ children }) {
@@ -35,6 +36,8 @@ export function AuthProvider({ children }) {
   const [profile, setProfile] = useState(null);
   const [profileError, setProfileError] = useState(null);
   const profileUnsub = useRef(null);
+  // Đổi khi sang ngày mới → dùng để nạp lại lịch nhắc cho ngày mới.
+  const todayKey = useTodayKey();
 
   // Configure Google Sign-In + notifications once.
   useEffect(() => {
@@ -127,7 +130,14 @@ export function AuthProvider({ children }) {
         }
       })
       .catch(() => {});
+  }, [profile]);
 
+  // Lịch nhắc: nạp lại mỗi khi hồ sơ đổi VÀ mỗi khi sang ngày mới, để lịch luôn
+  // được bù thêm ngày mới dù app mở liên tục nhiều ngày.
+  useEffect(() => {
+    if (!profile) {
+      return;
+    }
     // Only approved & active staff get the daily reminders. Bosses (by role or
     // by "Trưởng CA" position) never register; deactivated users are locked out.
     if (
@@ -140,7 +150,7 @@ export function AuthProvider({ children }) {
     } else {
       cancelAllReminders().catch(() => {});
     }
-  }, [profile]);
+  }, [profile, todayKey]);
   const signIn = useCallback(async () => {
     await signInWithGoogle();
   }, []);

@@ -19,6 +19,7 @@ import {
   subscribeDailyEntries,
 } from '../services/planService';
 import { scheduleWeekdayReminders } from '../services/notificationService';
+import { useToday } from '../hooks/useToday';
 import { formatDateVi, isWeekend, toDateKey } from '../utils/date';
 import { colors, spacing } from '../theme';
 export default function RegisterPlanScreen() {
@@ -29,14 +30,17 @@ export default function RegisterPlanScreen() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [todayEntries, setTodayEntries] = useState([]);
-  const today = new Date();
+  // Tự đổi khi sang ngày mới, kể cả khi app mở/nằm background suốt qua nửa đêm.
+  const today = useToday();
   const weekend = isWeekend(today);
 
   // Live list of EVERYONE's plans for today (staff coordination view). Allowed
   // by Firestore rule B (current day only). Own entry is included too.
+  // Sang ngày mới → huỷ listener cũ và lắng nghe collection của ngày mới.
   useEffect(() => {
+    setTodayEntries([]);
     const unsub = subscribeDailyEntries(
-      new Date(),
+      today,
       entries =>
         setTodayEntries(
           [...entries].sort((a, b) =>
@@ -46,7 +50,7 @@ export default function RegisterPlanScreen() {
       () => {},
     );
     return unsub;
-  }, []);
+  }, [today]);
   const load = useCallback(async () => {
     if (!profile) {
       return;
@@ -62,7 +66,7 @@ export default function RegisterPlanScreen() {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile?.uid]);
+  }, [profile?.uid, today]);
   useFocusEffect(
     useCallback(() => {
       load();

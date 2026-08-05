@@ -17,6 +17,7 @@ import DailyStatusTable from '../components/DailyStatusTable';
 import PositionSelect from '../components/PositionSelect';
 import { getDailyStatus, getMyEntry } from '../services/planService';
 import { displayNameOf } from '../services/userService';
+import { useFollowToday } from '../hooks/useToday';
 import { formatDateVi, toDateKey } from '../utils/date';
 import { colors, spacing } from '../theme';
 
@@ -98,7 +99,10 @@ function BossHistory() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [personFilter, setPersonFilter] = useState(ALL_PEOPLE);
-  const isToday = toDateKey(date) === toDateKey(new Date());
+  // Sang ngày mới: nếu đang xem "hôm nay" thì tự nhảy sang ngày mới; đang xem
+  // ngày quá khứ thì giữ nguyên lựa chọn của người dùng.
+  const todayKey = useFollowToday(setDate);
+  const isToday = toDateKey(date) === todayKey;
   // Dropdown options: "Tất cả" + one entry per person in the table (label = tên,
   // value = uid to stay unique even if two people share a name).
   const personOptions = useMemo(
@@ -193,7 +197,9 @@ function StaffHistory() {
   const [showPicker, setShowPicker] = useState(false);
   const [entry, setEntry] = useState(null);
   const [loading, setLoading] = useState(true);
-  const isToday = toDateKey(date) === toDateKey(new Date());
+  // Xem mục BossHistory: tự bám theo ngày mới khi đang xem "hôm nay".
+  const todayKey = useFollowToday(setDate);
+  const isToday = toDateKey(date) === todayKey;
   const load = useCallback(
     async d => {
       if (!profile) {

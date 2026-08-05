@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { subscribeDailyEntries } from '../services/planService';
 import { displayBossAlert } from '../services/notificationService';
+import { useToday } from '../hooks/useToday';
 /**
  * Mounted only for the boss. Listens to today's registrations in real time and
  * fires a local notification whenever a NEW plan is registered.
@@ -11,8 +12,13 @@ import { displayBossAlert } from '../services/notificationService';
  */
 export default function BossAlertListener() {
   const seen = useRef(null);
+  // Sang ngày mới → chuyển listener sang ngày mới (nếu không, app mở qua đêm sẽ
+  // vẫn theo dõi ngày cũ và không báo đăng ký của ngày hôm nay).
+  const today = useToday();
   useEffect(() => {
-    const unsub = subscribeDailyEntries(new Date(), entries => {
+    // Ngày mới → dựng lại baseline, tránh báo lại toàn bộ entry đầu tiên.
+    seen.current = null;
+    const unsub = subscribeDailyEntries(today, entries => {
       // First snapshot establishes the baseline without alerting.
       if (seen.current === null) {
         seen.current = new Set(entries.map(e => e.uid));
@@ -29,6 +35,6 @@ export default function BossAlertListener() {
       }
     });
     return unsub;
-  }, []);
+  }, [today]);
   return null;
 }
