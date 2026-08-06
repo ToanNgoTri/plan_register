@@ -49,9 +49,9 @@ service cloud.firestore {
 
     // ---- app config (version gating) ----
     // Public read: the force-update gate must read config/app before sign-in.
-    // Only holds non-sensitive values (minVersion, latestVersion, updateUrl,
-    // message). Write via the Firebase console / admin only — no in-app client
-    // may modify it.
+    // Only holds non-sensitive values (forceUpdate, minVersion, latestVersion,
+    // updateUrl, message). Write via the Firebase console / admin only — no
+    // in-app client may modify it.
     match /config/{doc} {
       allow read: if true;
       allow write: if false;

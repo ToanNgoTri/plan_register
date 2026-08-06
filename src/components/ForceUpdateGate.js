@@ -18,14 +18,17 @@ import {
 import { colors, spacing } from '../theme';
 
 /**
- * Mandatory-update gate (modeled on lawMachine, but forced). Blocks the whole
- * app with a non-dismissable modal when EITHER:
+ * Mandatory-update gate (modeled on lawMachine, but forced). Chỉ chặn khi
+ * `config/app.forceUpdate === true` trên Firestore — công tắc tổng, thiếu field
+ * hoặc để `false` thì không bao giờ chặn.
+ *
+ * Khi công tắc đã bật, app bị khoá bằng modal không tắt được nếu MỘT trong hai:
  *   - the installed version is below `config/app.minVersion` in Firestore
  *     (server-controlled; works for internally-distributed builds), OR
  *   - the store reports a newer version (react-native-version-check).
  *
- * The Firestore config is live, so bumping `minVersion` blocks old clients on
- * their next launch / foreground without republishing anything.
+ * The Firestore config is live, so bật `forceUpdate` / bumping `minVersion`
+ * blocks old clients ngay lập tức without republishing anything.
  */
 export default function ForceUpdateGate() {
   const current = getCurrentAppVersion();
@@ -53,10 +56,13 @@ export default function ForceUpdateGate() {
     });
     return () => sub.remove();
   }, []);
+  // Công tắc tổng: chỉ `true` mới bắt buộc cập nhật. Thiếu field, `false`, hay
+  // config chưa tải xong (null) đều = không chặn, nên không khoá nhầm người dùng.
+  const enabled = config?.forceUpdate === true;
   const minBlocked =
     !!config?.minVersion && compareVersions(current, config.minVersion) < 0;
   const storeBlocked = store?.isNeeded === true;
-  const needed = minBlocked || storeBlocked;
+  const needed = enabled && (minBlocked || storeBlocked);
   const latestVersion = config?.latestVersion ?? store?.latestVersion;
   // Link store theo đúng nền tảng đang chạy (iOS → App Store, Android → Play).
   const updateUrl = resolveUpdateUrl(config, store);

@@ -6,10 +6,12 @@ import { STORE_URL } from '../config/constants';
 
 /**
  * Version config you control, stored at Firestore `config/app`:
- *   { minVersion?: string, latestVersion?: string, updateUrl?: string,
- *     updateUrlIos?: string, updateUrlAndroid?: string, message?: string }
- * Bumping `minVersion` above the installed version forces an update — this is
- * the reliable path for internally-distributed builds that are not on a store.
+ *   { forceUpdate?: boolean, minVersion?: string, latestVersion?: string,
+ *     updateUrl?: string, updateUrlIos?: string, updateUrlAndroid?: string,
+ *     message?: string }
+ * `forceUpdate` là công tắc tổng: chỉ khi bằng `true` thì ForceUpdateGate mới
+ * chặn app. Bumping `minVersion` above the installed version forces an update —
+ * this is the reliable path for internally-distributed builds not on a store.
  */
 
 export function getCurrentAppVersion() {
