@@ -36,6 +36,12 @@ service cloud.firestore {
     function canRegister() {
       return isApprovedStaff() || isDev();
     }
+    // May read AND post the duty roster (lịch trực). Deliberately everyone with
+    // access to the app: approved staff, the boss, and the dev account. Keep in
+    // sync with canUseDuty() in storage.rules.
+    function canUseDuty() {
+      return isApprovedStaff() || isManager();
+    }
 
     // True when the given path parts (VN local day keys) are TODAY in
     // Asia/Ho_Chi_Minh (UTC+7, no DST). Used to let staff see everyone's
@@ -102,6 +108,22 @@ service cloud.firestore {
 
       // A manager may delete anyone; a user may delete their own account.
       allow delete: if isManager() || request.auth.uid == uid;
+    }
+
+    // ---- duty roster: duty_schedules/{force} ----
+    // One CURRENT roster per lực lượng ('CA' / 'ANCS'); posting a new one
+    // overwrites the doc (no history is kept). Anyone with app access may post,
+    // so `uploadedBy` is forced to the caller — the roster always shows who put
+    // it there. Deleting is narrower: only the person who posted it, or a
+    // manager, so a stray tap cannot wipe someone else's roster.
+    match /duty_schedules/{force} {
+      allow read: if canUseDuty();
+      allow create, update: if canUseDuty()
+        && force in ['CA', 'ANCS']
+        && request.resource.data.force == force
+        && request.resource.data.uploadedBy == request.auth.uid;
+      allow delete: if isManager()
+        || (canUseDuty() && resource.data.uploadedBy == request.auth.uid);
     }
 
     // ---- plan history: history/{year}/months/{month}/days/{day}/entries/{uid}

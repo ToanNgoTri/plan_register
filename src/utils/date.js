@@ -43,6 +43,13 @@ export function formatDateVi(d = new Date()) {
   return `${weekdays[d.getDay()]}, ${day}/${month}/${year}`;
 }
 
+/** Ngày giờ ngắn gọn, ví dụ "16/07/2026 14:30". Nhận Date hoặc timestamp ms. */
+export function formatDateTimeVi(value) {
+  const d = value instanceof Date ? value : new Date(value);
+  const { year, month, day } = dateParts(d);
+  return `${day}/${month}/${year} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 /** Parse a "YYYY-MM-DD" key back into a Date (local midnight). */
 export function fromDateKey(key) {
   const [y, m, d] = key.split('-').map(Number);

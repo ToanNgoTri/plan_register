@@ -32,6 +32,22 @@ export const POSITIONS = ['Trưởng CA', 'Phó Trưởng CA', 'Cán bộ'];
 export const BOSS_POSITION = 'Trưởng CA';
 
 /**
+ * Các lực lượng có lịch trực riêng (2 tab con của màn hình Lịch trực).
+ *
+ * Mỗi lực lượng chỉ giữ ĐÚNG MỘT bản lịch hiện hành: đăng bản mới sẽ thay thế
+ * bản cũ (document `duty_schedules/{id}` bị ghi đè, tệp cũ bị xoá khỏi
+ * Storage) — xem services/dutyService. Giữ các `id` này khớp với danh sách
+ * trong firestore.rules và storage.rules.
+ */
+export const FORCES = [
+  { id: 'CA', label: 'CA', title: 'Công an' },
+  { id: 'ANCS', label: 'ANCS', title: 'An ninh cơ sở' },
+];
+
+/** Kích thước tối đa của một tệp lịch trực. Phải khớp với storage.rules. */
+export const DUTY_MAX_FILE_BYTES = 15 * 1024 * 1024;
+
+/**
  * Trang cài đặt app trên store, theo từng nền tảng. Nút "Cập nhật ngay" của
  * ForceUpdateGate mở đúng link của nền tảng đang chạy (xem
  * versionService.resolveUpdateUrl để biết thứ tự ưu tiên).

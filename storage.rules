@@ -1,0 +1,55 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // Reads the caller's Firestore profile (cross-service rules) so Storage
+    // access matches firestore.rules instead of duplicating role logic.
+    function myProfile() {
+      return firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Same set as canUseDuty() in firestore.rules: approved staff, the boss
+    // (by role or by the "Trưởng CA" chức vụ), and the dev/review account.
+    function canUseDuty() {
+      return request.auth != null
+        && (
+             (myProfile().role == 'staff'
+              && myProfile().approved == true
+              && myProfile().active == true)
+             || myProfile().role == 'boss'
+             || myProfile().role == 'dev'
+             || myProfile().get('position', '') == 'Trưởng CA'
+           );
+    }
+
+    // ---- duty roster files: duty/{force}/{fileName} ----
+    // NOTE: the app renders the file through its download-token URL, which by
+    // design bypasses these rules. That URL only ever lives in the protected
+    // duty_schedules doc, so this still gates who can obtain it.
+    match /duty/{force}/{fileName} {
+      allow read: if canUseDuty();
+
+      // Only images and Word documents, max 15MB — keep in sync with
+      // DUTY_MAX_FILE_BYTES in src/config/constants.js.
+      allow create, update: if canUseDuty()
+        && force in ['CA', 'ANCS']
+        && request.resource.size < 15 * 1024 * 1024
+        && (
+             request.resource.contentType.matches('image/.*')
+             || request.resource.contentType in [
+                  'application/msword',
+                  'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                ]
+           );
+
+      // Replacing a roster deletes the file it superseded.
+      allow delete: if canUseDuty();
+    }
+
+    // Nothing else in the bucket is reachable from a client.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

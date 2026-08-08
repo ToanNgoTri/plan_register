@@ -15,6 +15,7 @@ import {
   assertSucceeds,
 } from '@firebase/rules-unit-testing';
 import {
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -78,6 +79,7 @@ await env.withSecurityRulesDisabled(async ctx => {
 });
 
 const staffA = env.authenticatedContext('staffA').firestore();
+const staffB = env.authenticatedContext('staffB').firestore();
 const chief = env.authenticatedContext('chief1').firestore();
 const selfP = env.authenticatedContext('selfP').firestore();
 const anon = env.unauthenticatedContext().firestore();
@@ -134,6 +136,47 @@ await check('staff lists ALL users (deny)', false, () =>
 // any signed-in user MAY query for the Trưởng CA (to detect one exists)
 await check('staff queries Trưởng CA users (allow)', true, () =>
   getDocs(query(collection(staffA, 'users'), where('position', '==', 'Trưởng CA'))));
+
+// ---- duty roster: duty_schedules/{force} ----
+// NOTE: must run BEFORE the self-profile-update block below, which promotes
+// staffA to a Trưởng CA (boss) and would invalidate the "plain staff" cases.
+const dutyDoc = (db, force = 'CA') => doc(db, 'duty_schedules', force);
+const duty = (uid, force = 'CA') => ({
+  force,
+  fileType: 'image',
+  fileName: 'lich-truc.jpg',
+  mimeType: 'image/jpeg',
+  size: 1234,
+  storagePath: `duty/${force}/1-lich-truc.jpg`,
+  fileUrl: 'https://example.com/x.jpg',
+  note: '',
+  uploadedBy: uid,
+  uploadedByName: uid,
+  uploadedAt: 1,
+});
+// approved staff read the roster → allowed (whole unit sees it)
+await check('staff reads duty roster', true, () => getDoc(dutyDoc(staffA)));
+// unauthenticated / not-yet-approved users see nothing
+await check('anon reads duty roster (deny)', false, () => getDoc(dutyDoc(anon)));
+await check('pending reads duty roster (deny)', false, () => getDoc(dutyDoc(selfP)));
+// any approved staff may post — this is deliberate, not a boss-only action
+await check('staff posts duty roster', true, () =>
+  setDoc(dutyDoc(staffA), duty('staffA')));
+// but may not post it under someone else's name
+await check('staff posts as other user (deny)', false, () =>
+  setDoc(dutyDoc(staffB), duty('staffA')));
+// nor create a roster for a lực lượng that does not exist
+await check('staff posts unknown force (deny)', false, () =>
+  setDoc(dutyDoc(staffA, 'XX'), duty('staffA', 'XX')));
+// deleting is narrower than posting: not someone else's roster...
+await check('staff deletes other roster (deny)', false, () =>
+  deleteDoc(dutyDoc(staffB)));
+// ...but the person who posted it may remove it
+await check('staff deletes own roster', true, () => deleteDoc(dutyDoc(staffA)));
+// and a manager may remove anyone's
+await check('staff posts duty roster again', true, () =>
+  setDoc(dutyDoc(staffA), duty('staffA')));
+await check('chief deletes any roster', true, () => deleteDoc(dutyDoc(chief)));
 
 // ---- self profile update: role must follow chức vụ ----
 const selfDoc = () => doc(staffA, 'users', 'staffA');
