@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Lấy đúng màu nền của "DON VI SO.png" nên lớp nền và lớp ảnh liền mạch. -->
+    <color name="ic_launcher_background">#004AAD</color>
+</resources>
