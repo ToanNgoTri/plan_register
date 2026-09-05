@@ -10,6 +10,7 @@ import RegisterPlanScreen from '../screens/RegisterPlanScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 import DutyScheduleScreen from '../screens/DutyScheduleScreen';
+import DocNumberScreen from '../screens/DocNumberScreen';
 import ManageUsersScreen from '../screens/ManageUsersScreen';
 import InactiveScreen from '../screens/InactiveScreen';
 import ProfileErrorScreen from '../screens/ProfileErrorScreen';
@@ -82,6 +83,14 @@ function BossTabs() {
           }}
         />
         <Tab.Screen
+          name="DocNumbers"
+          component={DocNumberScreen}
+          options={{
+            title: 'Số VB',
+            tabBarIcon: tabIcon('🔢'),
+          }}
+        />
+        <Tab.Screen
           name="History"
           component={HistoryScreen}
           options={{
@@ -129,6 +138,14 @@ function StaffTabs() {
         }}
       />
       <Tab.Screen
+        name="DocNumbers"
+        component={DocNumberScreen}
+        options={{
+          title: 'Số VB',
+          tabBarIcon: tabIcon('🔢'),
+        }}
+      />
+      <Tab.Screen
         name="History"
         component={HistoryScreen}
         options={{
@@ -170,6 +187,14 @@ function DevTabs() {
           options={{
             title: 'Lịch trực',
             tabBarIcon: tabIcon('🛡️'),
+          }}
+        />
+        <Tab.Screen
+          name="DocNumbers"
+          component={DocNumberScreen}
+          options={{
+            title: 'Số VB',
+            tabBarIcon: tabIcon('🔢'),
           }}
         />
         <Tab.Screen

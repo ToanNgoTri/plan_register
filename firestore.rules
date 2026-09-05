@@ -43,6 +43,25 @@ service cloud.firestore {
       return isApprovedStaff() || isManager();
     }
 
+    // May read the sổ số văn bản and take a number. Same audience as the duty
+    // roster: everyone with access to the app.
+    function canUseDocNumbers() {
+      return isApprovedStaff() || isManager();
+    }
+    // The caller currently holds the (unexpired) "đang nhập" lock. Used to gate
+    // the counter, so a number can only be issued by whoever holds the book.
+    function holdsDocNumberLock() {
+      let lock = get(/databases/$(database)/documents/doc_number_locks/global);
+      return lock != null
+        && lock.data.uid == request.auth.uid
+        && lock.data.expiresAt > request.time.toMillis();
+    }
+    // The lock document being written over has already expired (its holder's
+    // app died without releasing it), so anyone may take or clear it.
+    function lockExpired() {
+      return resource.data.expiresAt <= request.time.toMillis();
+    }
+
     // True when the given path parts (VN local day keys) are TODAY in
     // Asia/Ho_Chi_Minh (UTC+7, no DST). Used to let staff see everyone's
     // registrations for the current day, but not for past days.
@@ -124,6 +143,77 @@ service cloud.firestore {
         && request.resource.data.uploadedBy == request.auth.uid;
       allow delete: if isManager()
         || (canUseDuty() && resource.data.uploadedBy == request.auth.uid);
+    }
+
+    // ---- sổ số văn bản ----
+    // Cùng nhóm người dùng với lịch trực: cán bộ đã duyệt + boss + dev.
+    //
+    //  doc_numbers/{id}            – văn bản đã được cấp số (sổ gốc)
+    //  doc_number_counters/{id}    – { next } : số sẽ cấp tiếp cho một loại/năm
+    //  doc_number_locks/global     – ai đang mở form lấy số
+    match /doc_numbers/{id} {
+      allow read: if canUseDocNumbers();
+      // `createdBy` bị ép về chính người gọi: sổ luôn truy được ai lấy số.
+      allow create: if canUseDocNumbers()
+        && request.resource.data.createdBy == request.auth.uid;
+      // Sổ số văn bản là sổ gốc: đã cấp thì không sửa, không xoá — sửa số đã
+      // phát hành ra ngoài sẽ làm lệch cả dãy số. Cần bỏ một số thì huỷ bằng
+      // Firebase console (admin), có vết rõ ràng.
+      allow update, delete: if false;
+    }
+
+    // Bộ đếm chỉ được TĂNG DẦN từng một đơn vị, và chỉ bởi người đang giữ
+    // khoá — chặn cả việc lùi số (cấp trùng) lẫn việc nhảy cóc số.
+    match /doc_number_counters/{id} {
+      allow read: if canUseDocNumbers();
+      allow create: if canUseDocNumbers()
+        && holdsDocNumberLock()
+        && request.resource.data.next == 2;
+      allow update: if canUseDocNumbers()
+        && holdsDocNumberLock()
+        && request.resource.data.next == resource.data.next + 1;
+      allow delete: if false;
+    }
+
+    // Bộ đếm chữ phụ của MỘT số cụ thể (12A, 12B...). Cùng luật với bộ đếm
+    // chính: chỉ người đang giữ khoá được tăng, và chỉ tăng đúng một đơn vị —
+    // lùi lại là cấp trùng chữ, nhảy cóc là mất chữ.
+    match /doc_number_suffixes/{id} {
+      allow read: if canUseDocNumbers();
+      allow create: if canUseDocNumbers()
+        && holdsDocNumberLock()
+        && request.resource.data.next == 2;
+      allow update: if canUseDocNumbers()
+        && holdsDocNumberLock()
+        && request.resource.data.next == resource.data.next + 1;
+      allow delete: if false;
+    }
+
+    // Danh mục người ký / đơn vị ban hành. Cả đơn vị đọc để đổ vào dropdown,
+    // nhưng chỉ quản lý (Trưởng CA / dev) mới sửa được — đây là dữ liệu dùng
+    // chung, một người sửa là cả đơn vị thấy.
+    match /doc_number_options/{id} {
+      allow read: if canUseDocNumbers();
+      allow write: if isManager()
+        && id == 'lists'
+        && request.resource.data.signers is list
+        && request.resource.data.units is list;
+    }
+
+    // Khoá nhập liệu. Chỉ giành được khi khoá đang trống, đã hết hạn, hoặc là
+    // khoá của chính mình (gia hạn); và khoá ghi ra luôn mang tên người gọi,
+    // nên không ai giả danh người khác "đang nhập" được. Nhả khoá thì rộng
+    // hơn: chủ khoá, quản lý (gỡ kẹt), hoặc bất kỳ ai khi khoá đã hết hạn.
+    match /doc_number_locks/{id} {
+      allow read: if canUseDocNumbers();
+      allow create: if canUseDocNumbers()
+        && request.resource.data.uid == request.auth.uid;
+      allow update: if canUseDocNumbers()
+        && request.resource.data.uid == request.auth.uid
+        && (resource.data.uid == request.auth.uid || lockExpired());
+      allow delete: if isManager()
+        || (canUseDocNumbers()
+            && (resource.data.uid == request.auth.uid || lockExpired()));
     }
 
     // ---- plan history: history/{year}/months/{month}/days/{day}/entries/{uid}

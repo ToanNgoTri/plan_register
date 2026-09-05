@@ -23,6 +23,7 @@ import {
   collection,
   collectionGroup,
   query,
+  runTransaction,
   where,
 } from 'firebase/firestore';
 
@@ -177,6 +178,132 @@ await check('staff deletes own roster', true, () => deleteDoc(dutyDoc(staffA)));
 await check('staff posts duty roster again', true, () =>
   setDoc(dutyDoc(staffA), duty('staffA')));
 await check('chief deletes any roster', true, () => deleteDoc(dutyDoc(chief)));
+
+// ---- sổ số văn bản: doc_numbers / doc_number_counters / doc_number_locks ----
+// Also runs BEFORE the self-profile-update block (staffA is still plain staff).
+const lockDoc = db => doc(db, 'doc_number_locks', 'global');
+const counterDoc = db => doc(db, 'doc_number_counters', '2026-QD');
+const mkLock = uid => ({
+  uid, name: uid, unit: 'U', position: '',
+  acquiredAt: Date.now(), expiresAt: Date.now() + 60_000,
+});
+const counter = next => ({ year: 2026, typeId: 'QD', next });
+const mkEntry = uid => ({
+  seq: 1, year: 2026, number: '1/QĐ', typeId: 'QD', typeAbbr: 'QĐ',
+  typeLabel: 'Quyết định (cá biệt)', summary: 'Trích yếu', signer: 'Ông A',
+  unit: 'CA xã', createdBy: uid, createdByName: uid, createdAt: 1,
+});
+// taking the "đang nhập" lock while it is free → allowed
+await check('staff takes doc-number lock', true, () =>
+  setDoc(lockDoc(staffA), mkLock('staffA')));
+// ...and nobody else may take it while it is still alive (this is the lock)
+await check('other staff takes held lock (deny)', false, () =>
+  setDoc(lockDoc(staffB), mkLock('staffB')));
+// nor may they impersonate the holder in the lock document
+await check('staff writes lock under other name (deny)', false, () =>
+  setDoc(lockDoc(staffA), mkLock('staffB')));
+// a number can only be taken by whoever holds the lock
+await check('staff bumps counter without lock (deny)', false, () =>
+  setDoc(counterDoc(staffB), counter(2)));
+await check('lock holder bumps counter', true, () =>
+  setDoc(counterDoc(staffA), counter(2)));
+// the counter may only ever step forward by exactly one
+await check('counter skips a number (deny)', false, () =>
+  setDoc(counterDoc(staffA), counter(5)));
+await check('counter goes backwards (deny)', false, () =>
+  setDoc(counterDoc(staffA), counter(2)));
+await check('counter steps by one', true, () =>
+  setDoc(counterDoc(staffA), counter(3)));
+// writing the issued number itself, under the caller's own name
+await check('staff issues a doc number', true, () =>
+  setDoc(doc(staffA, 'doc_numbers', 'dn1'), mkEntry('staffA')));
+await check('staff issues under other name (deny)', false, () =>
+  setDoc(doc(staffB, 'doc_numbers', 'dn2'), mkEntry('staffA')));
+// the sổ is a permanent record: no edits, no deletes, not even by its author
+await check('staff edits issued number (deny)', false, () =>
+  setDoc(doc(staffA, 'doc_numbers', 'dn1'), { ...mkEntry('staffA'), summary: 'khác' }));
+await check('staff deletes issued number (deny)', false, () =>
+  deleteDoc(doc(staffA, 'doc_numbers', 'dn1')));
+await check('chief deletes issued number (deny)', false, () =>
+  deleteDoc(doc(chief, 'doc_numbers', 'dn1')));
+// the whole unit reads the sổ; outsiders and pending users do not
+await check('staff reads the sổ số văn bản', true, () =>
+  getDoc(doc(staffA, 'doc_numbers', 'dn1')));
+await check('anon reads the sổ (deny)', false, () =>
+  getDoc(doc(anon, 'doc_numbers', 'dn1')));
+await check('pending reads the sổ (deny)', false, () =>
+  getDoc(doc(selfP, 'doc_numbers', 'dn1')));
+// releasing: not someone else's live lock, but your own is fine
+await check('staff releases other live lock (deny)', false, () =>
+  deleteDoc(lockDoc(staffB)));
+await check('staff releases own lock', true, () => deleteDoc(lockDoc(staffA)));
+// a lock left behind by a crashed app expires, and anyone may then take it
+await env.withSecurityRulesDisabled(async ctx => {
+  await setDoc(doc(ctx.firestore(), 'doc_number_locks', 'global'), {
+    ...mkLock('staffA'), expiresAt: Date.now() - 1000,
+  });
+});
+await check('staff takes an EXPIRED lock', true, () =>
+  setDoc(lockDoc(staffB), mkLock('staffB')));
+await check('chief force-releases a live lock', true, () =>
+  deleteDoc(lockDoc(chief)));
+
+// The app issues a number in ONE transaction: bump the counter, write the
+// entry, and release the lock together. Rules evaluate every write in the
+// transaction against the state BEFORE it commits, so holdsDocNumberLock()
+// still sees the lock the same transaction is about to delete — this is the
+// path that actually runs in production, so test it, not just the pieces.
+const issueTx = db => runTransaction(db, async tx => {
+  await tx.get(lockDoc(db));
+  await tx.get(counterDoc(db));
+  tx.set(counterDoc(db), counter(4));
+  tx.set(doc(db, 'doc_numbers', 'dn3'), { ...mkEntry('staffA'), seq: 3, number: '3/QĐ' });
+  tx.delete(lockDoc(db));
+});
+await check('staff re-takes the lock', true, () =>
+  setDoc(lockDoc(staffA), mkLock('staffA')));
+// someone who does NOT hold the lock cannot slip a number through the same way
+await check('non-holder issues in one transaction (deny)', false, () => issueTx(staffB));
+await check('lock holder issues in one transaction', true, () => issueTx(staffA));
+
+// ---- so phu: doc_number_suffixes ----
+// Cung luat voi bo dem chinh, nhung dem chu cai cho MOT so cu the (12A, 12B).
+const suffixDoc = db => doc(db, 'doc_number_suffixes', '2026-QD-5');
+const sfx = next => ({ year: 2026, typeId: 'QD', seq: 5, next });
+await check('staff re-takes the lock (2)', true, () =>
+  setDoc(lockDoc(staffA), mkLock('staffA')));
+// khong giu khoa thi khong duoc cap chu phu
+await check('non-holder bumps suffix counter (deny)', false, () =>
+  setDoc(suffixDoc(staffB), sfx(2)));
+await check('lock holder takes suffix A', true, () =>
+  setDoc(suffixDoc(staffA), sfx(2)));
+// chu phu cung chi duoc tang dung mot don vi
+await check('suffix counter skips a letter (deny)', false, () =>
+  setDoc(suffixDoc(staffA), sfx(5)));
+await check('suffix counter goes backwards (deny)', false, () =>
+  setDoc(suffixDoc(staffA), sfx(2)));
+await check('suffix counter takes B', true, () => setDoc(suffixDoc(staffA), sfx(3)));
+await check('nobody deletes a suffix counter (deny)', false, () =>
+  deleteDoc(suffixDoc(chief)));
+// van ban so phu ghi vao so binh thuong (van bi ep createdBy)
+await check('staff writes a suffixed doc number', true, () =>
+  setDoc(doc(staffA, 'doc_numbers', 'dn5A'), { ...mkEntry('staffA'), seq: 5, suffix: 'A', number: '5A/QĐ' }));
+await check('staff releases own lock (2)', true, () => deleteDoc(lockDoc(staffA)));
+
+// ---- danh muc nguoi ky / don vi: doc_number_options ----
+const optDoc = (db, id = 'lists') => doc(db, 'doc_number_options', id);
+const opts = { signers: ['Phạm Nguyên Khánh'], units: ['Tổ An ninh'] };
+// ca don vi doc duoc (de do vao dropdown)...
+await check('staff reads danh muc', true, () => getDoc(optDoc(staffA)));
+await check('anon reads danh muc (deny)', false, () => getDoc(optDoc(anon)));
+// ...nhung chi quan ly moi sua duoc: day la du lieu dung chung
+await check('staff sua danh muc (deny)', false, () => setDoc(optDoc(staffA), opts));
+await check('chief sua danh muc', true, () => setDoc(optDoc(chief), opts));
+// khong tao duoc document danh muc la, va phai dung kieu mang
+await check('chief ghi id la (deny)', false, () =>
+  setDoc(optDoc(chief, 'khac'), opts));
+await check('chief ghi signers khong phai mang (deny)', false, () =>
+  setDoc(optDoc(chief), { signers: 'x', units: ['Tổ An ninh'] }));
 
 // ---- self profile update: role must follow chức vụ ----
 const selfDoc = () => doc(staffA, 'users', 'staffA');

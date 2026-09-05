@@ -60,3 +60,74 @@ export const STORE_URL = Platform.select({
   android: PLAY_STORE_URL,
   default: PLAY_STORE_URL,
 });
+
+/**
+ * Các loại văn bản có thể lấy số (theo danh mục tên loại và chữ viết tắt của
+ * Nghị định 30/2020/NĐ-CP, rút gọn cho phần việc của đơn vị).
+ *
+ *   id    – khoá kỹ thuật, CHỈ dùng ASCII vì nó nằm trong id document đếm số
+ *           (`doc_number_counters/{năm}-{id}`) và trong truy vấn lọc.
+ *   abbr  – chữ viết tắt in ra trong số văn bản, giữ nguyên dấu tiếng Việt.
+ *           Công văn không có chữ viết tắt → số văn bản chỉ có phần số.
+ *   label – tên loại văn bản hiển thị cho người dùng.
+ *
+ * Mỗi loại có MỘT dãy số riêng, đếm lại từ 1 mỗi năm — xem docNumberService.
+ * Không đổi `id` của một loại đã dùng, nếu không dãy số của nó sẽ bị đếm lại.
+ */
+export const DOC_TYPES = [
+  { id: 'NQ', abbr: 'NQ', label: 'Nghị quyết (cá biệt)' },
+  { id: 'QD', abbr: 'QĐ', label: 'Quyết định (cá biệt)' },
+  { id: 'CT', abbr: 'CT', label: 'Chỉ thị' },
+  { id: 'QC', abbr: 'QC', label: 'Quy chế' },
+  { id: 'QYD', abbr: 'QYĐ', label: 'Quy định' },
+  { id: 'TC', abbr: 'TC', label: 'Thông cáo' },
+  { id: 'TB', abbr: 'TB', label: 'Thông báo' },
+  { id: 'HD', abbr: 'HD', label: 'Hướng dẫn' },
+  { id: 'CTr', abbr: 'CTr', label: 'Chương trình' },
+  { id: 'KH', abbr: 'KH', label: 'Kế hoạch' },
+  { id: 'PA', abbr: 'PA', label: 'Phương án' },
+  { id: 'DA', abbr: 'ĐA', label: 'Đề án' },
+  { id: 'BC', abbr: 'BC', label: 'Báo cáo' },
+  { id: 'TTr', abbr: 'TTr', label: 'Tờ trình' },
+  { id: 'CV', abbr: '', label: 'Công văn' },
+  { id: 'GUQ', abbr: 'GUQ', label: 'Giấy ủy quyền' },
+  { id: 'GM', abbr: 'GM', label: 'Giấy mời' },
+  { id: 'GGT', abbr: 'GGT', label: 'Giấy giới thiệu' },
+  { id: 'GNP', abbr: 'GNP', label: 'Giấy nghỉ phép' },
+  { id: 'DN', abbr: 'ĐN', label: 'Đề nghị' },
+  { id: 'NX', abbr: 'NX', label: 'Nhận xét' },
+];
+
+/**
+ * Khoá "đang lấy số": mỗi lần chỉ một người được nhập, để hai người không lấy
+ * trùng một số. Khoá tự hết hạn sau DOC_LOCK_TTL_MS nếu app của người giữ bị
+ * tắt đột ngột (không nhả khoá được); trong lúc còn mở form, màn hình gia hạn
+ * khoá mỗi DOC_LOCK_HEARTBEAT_MS. Nhịp gia hạn phải NGẮN HƠN HẲN thời gian
+ * sống, nếu không khoá sẽ hết hạn ngay giữa lúc người ta đang gõ.
+ */
+export const DOC_LOCK_TTL_MS = 2 * 60 * 1000;
+export const DOC_LOCK_HEARTBEAT_MS = 30 * 1000;
+
+/**
+ * Danh mục NGƯỜI KÝ và ĐƠN VỊ BAN HÀNH mặc định.
+ *
+ * Đây chỉ là bản dự phòng dùng khi `doc_number_options/lists` chưa có trên
+ * Firestore. Danh mục thật nằm trong database để Trưởng CA sửa được ngay trên
+ * app (thêm/bớt cán bộ, đổi tên tổ) mà không phải phát hành bản cập nhật —
+ * xem subscribeDocNumberOptions trong services/docNumberService.
+ */
+export const DEFAULT_SIGNERS = [
+  'Phạm Nguyên Khánh',
+  'Nguyễn Minh Sang',
+  'Nguyễn Phi Viết',
+  'Nguyễn Việt Mạnh',
+  'Hoàng Ngọc Thắng',
+  'Nguyễn Văn Quyết',
+];
+export const DEFAULT_ISSUING_UNITS = [
+  'Tổ An ninh',
+  'Tổ PCTP',
+  'Tổ CSKV',
+  'Tổ Trật tự',
+  'Tổ Tổng hợp',
+];
