@@ -21,44 +21,43 @@ import { colors } from '../theme';
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
-/** Header greeting (left side): "Xin chào, [HỌ TÊN]" for the signed-in user. */
+/**
+ * Header greeting: "Xin chào, [HỌ TÊN]" của người đang đăng nhập.
+ *
+ * Nằm ở ô TIÊU ĐỀ, không phải ô bên trái. Navigator tính sẵn `maxWidth` cho ô
+ * tiêu đề bằng gần hết bề ngang máy, còn ô bên trái thì co đúng bằng nội dung —
+ * nên trước phải tự chặn cứng `maxWidth: 260` và họ tên dài bị cắt mất.
+ *
+ * Cho phép 2 dòng: hai dòng `lineHeight` 18 cao 36dp, vẫn nằm gọn trong chiều
+ * cao header (56dp Android / 44dp iOS), nên họ tên bốn năm chữ vẫn hiện đủ thay
+ * vì bị "…". Không đặt `paddingLeft` nữa: ô tiêu đề đã có sẵn lề 16dp.
+ */
 function HeaderGreeting() {
   const { profile } = useAuth();
   const name = profile ? displayNameOf(profile) : '';
   return (
     <Text
-      numberOfLines={1}
-      style={{
-        color: '#fff',
-        fontWeight: '600',
-        fontSize: 16,
-        paddingLeft: 16,
-        maxWidth: 260,
-      }}
+      numberOfLines={2}
+      // Người dùng đặt cỡ chữ hệ thống lớn thì hai dòng sẽ tràn khỏi header
+      // (iOS chỉ cao 44dp), nên chặn mức phóng ở 1.2: 2 x 18 x 1.2 = 43dp.
+      maxFontSizeMultiplier={1.2}
+      style={styles.greeting}
     >
       Xin chào, {name.toUpperCase()}
     </Text>
   );
 }
-const tabIcon = emoji => () =>
-  (
-    <Text
-      style={{
-        fontSize: 20,
-      }}
-    >
-      {emoji}
-    </Text>
-  );
+const tabIcon = emoji => () => <Text style={styles.tabIcon}>{emoji}</Text>;
 const screenOptions = {
   headerStyle: {
     backgroundColor: colors.primary,
   },
   headerTintColor: '#fff',
-  // Greeting on the left; the screen title is hidden (the tab bar already shows
-  // the tab name at the bottom).
-  headerTitle: () => null,
-  headerLeft: () => <HeaderGreeting />,
+  // Lời chào chiếm luôn ô tiêu đề — tên màn hình không cần hiện ở đây vì thanh
+  // tab dưới đã ghi. Canh trái trên CẢ HAI nền tảng: mặc định iOS canh giữa,
+  // mà ô tiêu đề canh giữa chỉ được một nửa bề ngang nên lại cắt chữ.
+  headerTitleAlign: 'left',
+  headerTitle: () => <HeaderGreeting />,
   tabBarActiveTintColor: colors.primary,
 };
 function BossTabs() {
@@ -298,6 +297,17 @@ export default function RootNavigator() {
   return <NavigationContainer>{content}</NavigationContainer>;
 }
 const styles = StyleSheet.create({
+  greeting: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 16,
+    // Hai dòng phải vừa chiều cao header (44dp iOS / 56dp Android), nên không
+    // dùng lineHeight mặc định.
+    lineHeight: 18,
+  },
+  tabIcon: {
+    fontSize: 20,
+  },
   splash: {
     flex: 1,
     alignItems: 'center',

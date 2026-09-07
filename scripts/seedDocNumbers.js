@@ -1,7 +1,7 @@
 /**
  * Admin script: tạo dữ liệu mẫu cho sổ số văn bản (màn hình "Số VB").
  *
- * Sinh ~22 văn bản đã lấy số cho MỖI loại trong DOC_TYPES (21 loại → ~460 văn
+ * Sinh ~22 văn bản đã lấy số cho MỖI loại trong DEFAULT_DOC_TYPES (21 loại → ~460 văn
  * bản), rồi đặt lại bộ đếm `doc_number_counters/{năm}-{loại}` để số tiếp theo
  * lấy trong app nối đúng vào dãy đã sinh.
  *
@@ -44,7 +44,7 @@ const BATCH_LIMIT = 500;
 // ---------------------------------------------------------------------------
 
 /**
- * Đọc DOC_TYPES thẳng từ src/config/constants.js thay vì chép lại vào đây.
+ * Đọc DEFAULT_DOC_TYPES thẳng từ src/config/constants.js thay vì chép lại vào đây.
  *
  * Không require() được vì constants.js là ESM và import 'react-native', nên
  * script cắt lấy đúng mảng literal rồi eval. Chép tay danh mục sang script sẽ
@@ -66,12 +66,15 @@ function loadArrayConst(name) {
   }
   return value;
 }
-const loadDocTypes = () => loadArrayConst('DOC_TYPES');
+const loadDocTypes = () => loadArrayConst('DEFAULT_DOC_TYPES');
 
 
-/** Giống formatDocNumber trong docNumberService: Công văn không có viết tắt. */
+/**
+ * Giống formatDocNumber trong docNumberService: Công văn không có viết tắt, và
+ * số dưới 10 viết hai chữ số ("01/QĐ").
+ */
 function formatDocNumber(seq, abbr, suffix = '') {
-  const num = `${seq}${suffix || ''}`;
+  const num = `${String(seq).padStart(2, '0')}${suffix || ''}`;
   return abbr ? `${num}/${abbr}` : num;
 }
 
@@ -757,6 +760,10 @@ async function seed(db, opts) {
     data: {
       signers: SIGNERS,
       units: UNITS,
+      // Danh mục loại văn bản cũng nằm trong dữ liệu (app đọc từ đây chứ không
+      // từ mã nguồn), nên dữ liệu mẫu phải ghi luôn — thiếu nó thì app lùi về
+      // danh mục mặc định và màn hình quản lý hiện "đang dùng mặc định".
+      types: docTypes,
       updatedAt: Date.now(),
       seeded: true,
     },

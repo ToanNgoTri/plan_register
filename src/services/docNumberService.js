@@ -14,10 +14,10 @@ import {
 import { db } from './firebase';
 import { displayNameOf } from './userService';
 import {
+  DEFAULT_DOC_TYPES,
   DEFAULT_ISSUING_UNITS,
   DEFAULT_SIGNERS,
   DOC_LOCK_TTL_MS,
-  DOC_TYPES,
 } from '../config/constants';
 
 /**
@@ -27,20 +27,27 @@ import {
  *   doc_numbers/{autoId}                       – một văn bản đã lấy số
  *   doc_number_counters/{năm}-{loại}           – { next } : số sẽ cấp tiếp theo
  *   doc_number_suffixes/{năm}-{loại}-{số}      – { next } : chữ cái phụ kế tiếp
- *   doc_number_locks/global                    – ai đang mở form lấy số
+ *   doc_number_locks/{loại}                    – ai đang lấy số của loại đó
  *   doc_number_options/lists                   – danh mục người ký / đơn vị
  *
  * HAI thứ phải tuyệt đối không được chạy song song, và cả hai đều dựa trên
  * transaction chứ không dựa vào giao diện:
  *
- *  1. KHOÁ NHẬP LIỆU. Mỗi lần chỉ một người được mở form lấy số; những người
- *     khác nhìn thấy tên người đang nhập và không bấm được. Đây là ràng buộc
- *     nghiệp vụ (sổ số văn bản chỉ có một, một người cầm một lúc), nên khoá là
- *     khoá CHUNG cho mọi loại văn bản chứ không phải mỗi loại một khoá.
+ *  1. KHOÁ NHẬP LIỆU, MỖI LOẠI VĂN BẢN MỘT KHOÁ. Cùng một loại thì mỗi lần chỉ
+ *     một người được mở form; người khác thấy tên người đang nhập và không bấm
+ *     được. Khoá đặt theo LOẠI chứ không theo năm: chữ phụ của một văn bản năm
+ *     trước vẫn đi qua đúng cái khoá của loại đó, nên không có khe hở nào ở
+ *     thời điểm chuyển năm. Hai loại khác nhau là hai dãy số độc lập, khoá
+ *     chung cả sổ chỉ làm cả đơn vị xếp hàng vô cớ.
  *
  *  2. CẤP SỐ. Số tiếp theo được đọc và tăng trong cùng một transaction với việc
  *     ghi văn bản, nên kể cả khi khoá bị hết hạn và hai người cùng bấm lưu thì
  *     vẫn không ai lấy trùng số của ai.
+ *
+ * Bộ đếm mang năm trong id (`2026-QD`), nên sang năm mới là một bộ đếm khác và
+ * số tự bắt đầu lại từ 01 — không cần ai đi "reset" bằng tay, nhưng cũng có
+ * nghĩa số MỚI phải luôn cấp theo năm hiện tại (xem `currentDocYear`), không
+ * theo năm mà người dùng đang chọn để xem lịch sử.
  *
  * Có HAI kiểu cấp số, dùng hai bộ đếm khác nhau:
  *
@@ -55,27 +62,110 @@ import {
  * (điểm 2 mới là thứ bảo đảm số không trùng).
  */
 
-const LOCK_ID = 'global';
-
 const numbersCol = () => collection(db, 'doc_numbers');
-const lockRef = () => doc(db, 'doc_number_locks', LOCK_ID);
+const locksCol = () => collection(db, 'doc_number_locks');
+const lockRef = typeId => doc(db, 'doc_number_locks', typeId);
 const counterRef = (year, typeId) =>
   doc(db, 'doc_number_counters', `${year}-${typeId}`);
 const suffixRef = (year, typeId, seq) =>
   doc(db, 'doc_number_suffixes', `${year}-${typeId}-${seq}`);
 const optionsRef = () => doc(db, 'doc_number_options', 'lists');
 
-/** Loại văn bản theo id, hoặc null nếu id lạ (dữ liệu cũ). */
-export function docTypeById(typeId) {
-  return DOC_TYPES.find(t => t.id === typeId) ?? null;
+/**
+ * Loại văn bản theo id trong danh mục đang dùng, hoặc null nếu id lạ — loại đã
+ * bị xoá khỏi danh mục vẫn còn nguyên trong các văn bản đã cấp số, nên người
+ * gọi phải chịu được `null` thay vì coi đó là lỗi.
+ */
+export function docTypeById(types, typeId) {
+  return types.find(t => t.id === typeId) ?? null;
+}
+
+/** Bỏ dấu tiếng Việt, giữ nguyên hoa/thường: "QĐ" → "QD", "CTr" → "CTr". */
+function withoutDiacritics(s) {
+  return s
+    .normalize('NFD')
+    .split('')
+    .filter(c => c.charCodeAt(0) < 0x0300 || c.charCodeAt(0) > 0x036f)
+    .join('')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D');
+}
+
+/**
+ * Sinh `id` cho một loại văn bản mới. Id là thứ VĨNH VIỄN (nằm trong id bộ đếm,
+ * id khoá và trong từng văn bản đã cấp), nên phải chỉ gồm chữ và số — id có dấu
+ * hoặc có khoảng trắng sẽ đẻ ra document id khó đọc và khó tra tay trên Console.
+ *
+ * Lấy từ chữ viết tắt nếu có ("QĐ" → "QD"), không thì lấy chữ cái đầu của tên
+ * ("Công văn" → "CV"). Trùng với id đã có thì thêm số ("BC" → "BC2") chứ tuyệt
+ * đối không dùng lại id cũ: dùng lại là nối vào dãy số của một loại khác.
+ */
+export function docTypeIdFrom(label, abbr, taken = []) {
+  const fromAbbr = withoutDiacritics(abbr ?? '').replace(/[^A-Za-z0-9]/g, '');
+  const fromLabel = withoutDiacritics(label ?? '')
+    .split(/\s+/)
+    .map(w => w.charAt(0))
+    .join('')
+    .replace(/[^A-Za-z0-9]/g, '')
+    .toUpperCase();
+  const base = (fromAbbr || fromLabel).slice(0, 12) || 'VB';
+  let id = base;
+  let n = 2;
+  while (taken.includes(id)) {
+    id = `${base}${n}`;
+    n += 1;
+  }
+  return id;
+}
+
+/**
+ * Làm sạch danh mục loại văn bản trước khi ghi: bỏ dòng trống, sinh id cho dòng
+ * mới, bỏ dòng trùng id. Giữ NGUYÊN id của những dòng đã có id — đổi id của một
+ * loại đang dùng là cắt rời nó khỏi bộ đếm và khỏi các văn bản đã cấp số.
+ */
+export function cleanDocTypes(list) {
+  const out = [];
+  list.forEach(t => {
+    const label = String(t?.label ?? '').trim();
+    if (!label) {
+      return;
+    }
+    const abbr = String(t?.abbr ?? '').trim();
+    const id =
+      String(t?.id ?? '').trim() ||
+      docTypeIdFrom(
+        label,
+        abbr,
+        out.map(x => x.id),
+      );
+    if (!/^[A-Za-z0-9]{1,16}$/.test(id) || out.some(x => x.id === id)) {
+      return;
+    }
+    out.push({ id, label, abbr });
+  });
+  return out;
+}
+
+/**
+ * Năm đang cấp số. Số MỚI luôn thuộc năm này, kể cả khi màn hình đang xem lịch
+ * sử của năm cũ: bộ đếm tách theo năm nên cấp lẫn năm là cấp trùng số của một
+ * dãy đã đóng. Đọc lại mỗi lần gọi (không cache) để app mở suốt qua đêm 31/12
+ * là sang số của năm mới ngay.
+ */
+export function currentDocYear() {
+  return new Date().getFullYear();
 }
 
 /**
  * Số văn bản hoàn chỉnh: 12 + "QĐ" → "12/QĐ", thêm chữ phụ → "12A/QĐ".
  * Công văn không có chữ viết tắt nên chỉ còn phần số ("12", "12A").
+ *
+ * Số dưới 10 viết hai chữ số ("01/QĐ") theo lối trình bày văn bản hành chính.
+ * Tính từ `seq` chứ không đọc trường `number` đã lưu, nên các số cấp trước khi
+ * có phần đệm này cũng hiển thị đúng một kiểu.
  */
 export function formatDocNumber(seq, abbr, suffix = '') {
-  const num = `${seq}${suffix || ''}`;
+  const num = `${String(seq).padStart(2, '0')}${suffix || ''}`;
   return abbr ? `${num}/${abbr}` : num;
 }
 
@@ -100,31 +190,55 @@ export function isLockActive(lock, now = Date.now()) {
 
 function lockedError(holder) {
   const e = new Error(
-    `${holder.name} đang lấy số văn bản. Vui lòng đợi và thử lại.`,
+    `${holder.name} đang lấy số ${holder.typeLabel ?? 'văn bản'}. ` +
+      'Vui lòng đợi hoặc lấy số của loại khác.',
   );
   e.code = 'doc-number/locked';
   e.holder = holder;
   return e;
 }
 
-/** Ai đang giữ khoá nhập liệu, cập nhật theo thời gian thực (null = trống). */
-export function subscribeDocNumberLock(onChange, onError) {
+/**
+ * Ai đang giữ khoá của loại nào, cập nhật theo thời gian thực. Trả về một đối
+ * tượng { [typeId]: khoá } — loại không có mặt trong đó là loại đang trống.
+ *
+ * Lắng nghe cả collection (một document mỗi loại, tối đa bằng số loại văn bản)
+ * chứ không lắng nghe từng loại: màn hình phải nói được "loại nào đang có người
+ * nhập" cho cả danh sách, không chỉ cho loại đang chọn.
+ *
+ * Chỉ nhận document TỰ KHAI đúng loại của mình (`typeId` bằng id document).
+ * Không đối chiếu với danh mục loại: danh mục nằm trong dữ liệu và có thể đổi
+ * bất cứ lúc nào, mà khoá của một loại vừa bị xoá khỏi danh mục thì vẫn phải
+ * thấy — người đang giữ nó cần nhập nốt. Điều kiện này cũng loại được khoá
+ * chung `doc_number_locks/global` của bản cũ (document đó không có `typeId`).
+ */
+export function subscribeDocNumberLocks(onChange, onError) {
   return onSnapshot(
-    lockRef(),
-    snap => onChange(snap.exists() ? snap.data() : null),
+    locksCol(),
+    snap => {
+      const byType = {};
+      snap.docs.forEach(d => {
+        if (d.data()?.typeId === d.id) {
+          byType[d.id] = { ...d.data(), typeId: d.id };
+        }
+      });
+      onChange(byType);
+    },
     err => onError?.(err),
   );
 }
 
 /**
- * Giành khoá nhập liệu. Ném lỗi `doc-number/locked` (kèm `holder`) nếu người
- * khác đang giữ. Giành lại được khoá của chính mình (mở lại form) và khoá của
- * người khác đã hết hạn.
+ * Giành khoá nhập liệu CỦA MỘT LOẠI văn bản. Ném lỗi `doc-number/locked` (kèm
+ * `holder`) nếu người khác đang giữ khoá của đúng loại đó; các loại khác không
+ * liên quan. Giành lại được khoá của chính mình (mở lại form) và khoá của người
+ * khác đã hết hạn.
  */
-export async function acquireDocNumberLock(user) {
+export async function acquireDocNumberLock(user, type) {
   return runTransaction(db, async tx => {
     const now = Date.now();
-    const snap = await tx.get(lockRef());
+    const ref = lockRef(type.id);
+    const snap = await tx.get(ref);
     const current = snap.exists() ? snap.data() : null;
     if (current && current.uid !== user.uid && current.expiresAt > now) {
       throw lockedError(current);
@@ -134,12 +248,16 @@ export async function acquireDocNumberLock(user) {
       name: displayNameOf(user),
       unit: user.unit ?? '',
       position: user.position ?? '',
+      // Loại nằm trong chính document (không chỉ trong id) để rules đối chiếu
+      // được, và để màn hình gọi tên loại mà không phải tra lại danh mục.
+      typeId: type.id,
+      typeLabel: type.label,
       // Giữ nguyên thời điểm bắt đầu khi tự gia hạn, để người khác thấy đúng
       // "đang nhập từ lúc nào" chứ không phải lúc gia hạn gần nhất.
       acquiredAt: current?.uid === user.uid ? current.acquiredAt : now,
       expiresAt: now + DOC_LOCK_TTL_MS,
     };
-    tx.set(lockRef(), lock);
+    tx.set(ref, lock);
     return lock;
   });
 }
@@ -148,24 +266,26 @@ export async function acquireDocNumberLock(user) {
  * Gia hạn khoá đang giữ. Không làm gì nếu khoá đã bị người khác lấy mất —
  * người gọi nhận biết qua listener chứ không qua hàm này.
  */
-export async function renewDocNumberLock(uid) {
+export async function renewDocNumberLock(uid, typeId) {
   await runTransaction(db, async tx => {
-    const snap = await tx.get(lockRef());
+    const ref = lockRef(typeId);
+    const snap = await tx.get(ref);
     if (!snap.exists() || snap.data().uid !== uid) {
       return;
     }
-    tx.update(lockRef(), { expiresAt: Date.now() + DOC_LOCK_TTL_MS });
+    tx.update(ref, { expiresAt: Date.now() + DOC_LOCK_TTL_MS });
   });
 }
 
-/** Nhả khoá (chỉ khi đúng là mình đang giữ). */
-export async function releaseDocNumberLock(uid) {
+/** Nhả khoá của một loại (chỉ khi đúng là mình đang giữ). */
+export async function releaseDocNumberLock(uid, typeId) {
   await runTransaction(db, async tx => {
-    const snap = await tx.get(lockRef());
+    const ref = lockRef(typeId);
+    const snap = await tx.get(ref);
     if (!snap.exists() || snap.data().uid !== uid) {
       return;
     }
-    tx.delete(lockRef());
+    tx.delete(ref);
   });
 }
 
@@ -182,17 +302,21 @@ export async function peekNextSuffix(year, typeId, seq) {
 }
 
 /**
- * Các số GỐC đã cấp của một loại trong năm, mới nhất trước — để người dùng
- * chọn số cần thêm chữ phụ.
+ * Các số GỐC đã cấp của một loại, mới nhất trước — để người dùng chọn số cần
+ * thêm chữ phụ.
+ *
+ * Lấy năm nay VÀ năm trước: chữ phụ bám vào một văn bản đã phát hành, mà những
+ * ngày đầu tháng 1 thì văn bản gốc còn nằm ở năm cũ. Số MỚI thì ngược lại,
+ * luôn thuộc năm hiện tại.
  *
  * Lọc bỏ văn bản đã có chữ phụ ngay tại đây thay vì thêm một điều kiện `where`:
  * chữ phụ luôn bám vào số gốc, nên "12A" không bao giờ là gốc của "12AA". Lọc
  * phía client cũng tránh phải tạo thêm một index tổ hợp nữa.
  */
-export async function fetchBaseNumbers(year, typeId) {
+export async function fetchBaseNumbers(typeId, years) {
   const q = query(
     numbersCol(),
-    where('year', '==', year),
+    where('year', 'in', years),
     where('typeId', '==', typeId),
     orderBy('createdAt', 'desc'),
     limit(DOC_HISTORY_LIMIT),
@@ -201,15 +325,18 @@ export async function fetchBaseNumbers(year, typeId) {
   return snap.docs
     .map(d => d.data())
     .filter(x => !x.suffix)
-    .sort((a, b) => b.seq - a.seq);
+    .sort((a, b) => b.year - a.year || b.seq - a.seq);
 }
 
 /**
- * Cấp số cho một văn bản và ghi vào sổ. Người gọi phải đang giữ khoá.
+ * Cấp số cho một văn bản và ghi vào sổ. Người gọi phải đang giữ khoá CỦA LOẠI
+ * văn bản này.
  *
- * `baseSeq = null` → cấp SỐ MỚI: tăng bộ đếm chính của loại đó.
+ * `baseSeq = null` → cấp SỐ MỚI: tăng bộ đếm chính của loại đó. `year` phải là
+ *                    năm hiện tại (`currentDocYear`).
  * `baseSeq = 12`   → cấp SỐ PHỤ của số 12: tăng bộ đếm chữ phụ của riêng số
  *                    12, bộ đếm chính không đổi (số kế tiếp của sổ vẫn nguyên).
+ *                    `year` là năm của văn bản gốc, có thể là năm trước.
  *
  * Đọc bộ đếm, tăng bộ đếm, ghi văn bản và nhả khoá nằm trong CÙNG một
  * transaction: hoặc văn bản có số và bộ đếm nhảy, hoặc không có gì xảy ra.
@@ -233,12 +360,12 @@ export async function issueDocNumber({
   return runTransaction(db, async tx => {
     const now = Date.now();
     // Mọi lệnh đọc phải xong trước lệnh ghi đầu tiên của transaction.
-    const lockSnap = await tx.get(lockRef());
+    const lockSnap = await tx.get(lockRef(type.id));
     const lock = lockSnap.exists() ? lockSnap.data() : null;
     if (!lock || lock.uid !== user.uid || lock.expiresAt <= now) {
       const e = new Error(
         isLockActive(lock, now)
-          ? `${lock.name} đã lấy quyền nhập. Văn bản chưa được cấp số.`
+          ? `${lock.name} đã lấy quyền nhập ${type.label}. Văn bản chưa được cấp số.`
           : 'Phiên nhập đã hết hạn. Vui lòng lấy lại quyền nhập.',
       );
       e.code = 'doc-number/lock-lost';
@@ -279,7 +406,7 @@ export async function issueDocNumber({
     });
     tx.set(entryRef, entry);
     // Lấy số xong là nhả khoá ngay, người sau không phải chờ hết hạn.
-    tx.delete(lockRef());
+    tx.delete(lockRef(type.id));
     return { ...entry, id: entryRef.id };
   });
 }
@@ -300,6 +427,11 @@ export function subscribeDocNumberOptions(onChange, onError) {
       onChange({
         signers: data?.signers?.length ? data.signers : DEFAULT_SIGNERS,
         units: data?.units?.length ? data.units : DEFAULT_ISSUING_UNITS,
+        // Danh mục loại văn bản cũng nằm ở đây: thêm/bớt một loại là sửa dữ
+        // liệu, không phải ra bản cập nhật app. Danh sách rỗng (hoặc chưa có
+        // document) thì lùi về danh mục mặc định, để không bao giờ có tình
+        // trạng mở app ra không lấy được số nào.
+        types: data?.types?.length ? cleanDocTypes(data.types) : DEFAULT_DOC_TYPES,
         // Phân biệt "đang dùng mặc định" với "đã có danh mục riêng", để màn
         // hình quản lý nói rõ cho người dùng biết họ đang sửa cái gì.
         fromDefaults: !data,
@@ -309,18 +441,29 @@ export function subscribeDocNumberOptions(onChange, onError) {
   );
 }
 
-/** Ghi lại danh mục người ký / đơn vị. Chỉ Trưởng CA (hoặc dev) làm được. */
-export async function saveDocNumberOptions({ signers, units }, user) {
+/**
+ * Ghi lại danh mục người ký / đơn vị / loại văn bản. Chỉ Trưởng CA (hoặc dev)
+ * làm được.
+ *
+ * `types` bỏ qua (undefined) thì giữ nguyên danh mục loại đang có — để một màn
+ * hình chỉ sửa người ký không vô tình xoá sạch danh mục loại.
+ */
+export async function saveDocNumberOptions({ signers, units, types }, user) {
   const clean = list => [
     ...new Set(list.map(x => x.trim()).filter(Boolean)),
   ];
-  await setDoc(optionsRef(), {
-    signers: clean(signers),
-    units: clean(units),
-    updatedAt: Date.now(),
-    updatedBy: user.uid,
-    updatedByName: displayNameOf(user),
-  });
+  await setDoc(
+    optionsRef(),
+    {
+      signers: clean(signers),
+      units: clean(units),
+      ...(types ? { types: cleanDocTypes(types) } : {}),
+      updatedAt: Date.now(),
+      updatedBy: user.uid,
+      updatedByName: displayNameOf(user),
+    },
+    { merge: !types },
+  );
 }
 
 /**

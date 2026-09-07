@@ -74,7 +74,16 @@ export const STORE_URL = Platform.select({
  * Mỗi loại có MỘT dãy số riêng, đếm lại từ 1 mỗi năm — xem docNumberService.
  * Không đổi `id` của một loại đã dùng, nếu không dãy số của nó sẽ bị đếm lại.
  */
-export const DOC_TYPES = [
+/**
+ * Danh mục loại văn bản MẶC ĐỊNH — chỉ dùng khi đơn vị chưa có danh mục riêng.
+ * Danh mục thật nằm trong Firestore (`doc_number_options/lists.types`) để Trưởng
+ * CA thêm/bớt loại ngay trên app, không phải chờ bản cập nhật; xem
+ * `subscribeDocNumberOptions`.
+ *
+ * `id` là thứ đi vào id của bộ đếm (`2026-QD`), của khoá (`QD`) và vào từng văn
+ * bản đã cấp số, nên KHÔNG bao giờ được đổi hay dùng lại cho loại khác.
+ */
+export const DEFAULT_DOC_TYPES = [
   { id: 'NQ', abbr: 'NQ', label: 'Nghị quyết (cá biệt)' },
   { id: 'QD', abbr: 'QĐ', label: 'Quyết định (cá biệt)' },
   { id: 'CT', abbr: 'CT', label: 'Chỉ thị' },
@@ -99,11 +108,14 @@ export const DOC_TYPES = [
 ];
 
 /**
- * Khoá "đang lấy số": mỗi lần chỉ một người được nhập, để hai người không lấy
- * trùng một số. Khoá tự hết hạn sau DOC_LOCK_TTL_MS nếu app của người giữ bị
- * tắt đột ngột (không nhả khoá được); trong lúc còn mở form, màn hình gia hạn
- * khoá mỗi DOC_LOCK_HEARTBEAT_MS. Nhịp gia hạn phải NGẮN HƠN HẲN thời gian
- * sống, nếu không khoá sẽ hết hạn ngay giữa lúc người ta đang gõ.
+ * Khoá "đang lấy số", MỖI LOẠI VĂN BẢN MỘT KHOÁ: cùng một loại thì mỗi lần chỉ
+ * một người được nhập (để không lấy trùng số), còn hai loại khác nhau là hai
+ * dãy số độc lập nên chạy song song được.
+ *
+ * Khoá tự hết hạn sau DOC_LOCK_TTL_MS nếu app của người giữ bị tắt đột ngột
+ * (không nhả khoá được); trong lúc còn mở form, màn hình gia hạn khoá mỗi
+ * DOC_LOCK_HEARTBEAT_MS. Nhịp gia hạn phải NGẮN HƠN HẲN thời gian sống, nếu
+ * không khoá sẽ hết hạn ngay giữa lúc người ta đang gõ.
  */
 export const DOC_LOCK_TTL_MS = 2 * 60 * 1000;
 export const DOC_LOCK_HEARTBEAT_MS = 30 * 1000;

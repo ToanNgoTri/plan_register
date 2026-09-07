@@ -181,13 +181,16 @@ await check('chief deletes any roster', true, () => deleteDoc(dutyDoc(chief)));
 
 // ---- sổ số văn bản: doc_numbers / doc_number_counters / doc_number_locks ----
 // Also runs BEFORE the self-profile-update block (staffA is still plain staff).
-const lockDoc = db => doc(db, 'doc_number_locks', 'global');
-const counterDoc = db => doc(db, 'doc_number_counters', '2026-QD');
-const mkLock = uid => ({
+// Khoá đặt theo LOẠI văn bản (id = typeId), không phải một khoá chung cả sổ.
+const lockDoc = (db, typeId = 'QD') => doc(db, 'doc_number_locks', typeId);
+const counterDoc = (db, id = '2026-QD') =>
+  doc(db, 'doc_number_counters', id);
+const mkLock = (uid, typeId = 'QD') => ({
   uid, name: uid, unit: 'U', position: '',
+  typeId, typeLabel: typeId === 'QD' ? 'Quyết định (cá biệt)' : 'Báo cáo',
   acquiredAt: Date.now(), expiresAt: Date.now() + 60_000,
 });
-const counter = next => ({ year: 2026, typeId: 'QD', next });
+const counter = (next, year = 2026, typeId = 'QD') => ({ year, typeId, next });
 const mkEntry = uid => ({
   seq: 1, year: 2026, number: '1/QĐ', typeId: 'QD', typeAbbr: 'QĐ',
   typeLabel: 'Quyết định (cá biệt)', summary: 'Trích yếu', signer: 'Ông A',
@@ -202,11 +205,32 @@ await check('other staff takes held lock (deny)', false, () =>
 // nor may they impersonate the holder in the lock document
 await check('staff writes lock under other name (deny)', false, () =>
   setDoc(lockDoc(staffA), mkLock('staffB')));
+// the lock document must name the loại its id stands for, otherwise the typeId
+// the counter rules look the lock up by would be free-form.
+await check('staff writes lock with wrong typeId (deny)', false, () =>
+  setDoc(lockDoc(staffA, 'BC'), mkLock('staffA', 'QD')));
+// khoá theo loại: một loại đang bị giữ KHÔNG khoá các loại còn lại
+await check('other staff takes a DIFFERENT type lock', true, () =>
+  setDoc(lockDoc(staffB, 'BC'), mkLock('staffB', 'BC')));
 // a number can only be taken by whoever holds the lock
 await check('staff bumps counter without lock (deny)', false, () =>
   setDoc(counterDoc(staffB), counter(2)));
+// ...and holding one type's lock does not open another type's counter
+await check('BC holder bumps QD counter (deny)', false, () =>
+  setDoc(counterDoc(staffB), counter(2)));
+await check('BC holder bumps BC counter', true, () =>
+  setDoc(counterDoc(staffB, '2026-BC'), counter(2, 2026, 'BC')));
+// the counter id must spell out the (năm, loại) it counts, or the lock check
+// could be passed with a typeId that has nothing to do with the document.
+await check('counter id disagrees with its fields (deny)', false, () =>
+  setDoc(counterDoc(staffB, '2026-XX'), counter(3, 2026, 'BC')));
+await check('staff releases own BC lock', true, () =>
+  deleteDoc(lockDoc(staffB, 'BC')));
 await check('lock holder bumps counter', true, () =>
   setDoc(counterDoc(staffA), counter(2)));
+// sang năm mới là một document đếm khác, nên số bắt đầu lại từ 1 (next == 2)
+await check('lock holder opens next year counter', true, () =>
+  setDoc(counterDoc(staffA, '2027-QD'), counter(2, 2027)));
 // the counter may only ever step forward by exactly one
 await check('counter skips a number (deny)', false, () =>
   setDoc(counterDoc(staffA), counter(5)));
@@ -239,7 +263,7 @@ await check('staff releases other live lock (deny)', false, () =>
 await check('staff releases own lock', true, () => deleteDoc(lockDoc(staffA)));
 // a lock left behind by a crashed app expires, and anyone may then take it
 await env.withSecurityRulesDisabled(async ctx => {
-  await setDoc(doc(ctx.firestore(), 'doc_number_locks', 'global'), {
+  await setDoc(doc(ctx.firestore(), 'doc_number_locks', 'QD'), {
     ...mkLock('staffA'), expiresAt: Date.now() - 1000,
   });
 });
@@ -268,8 +292,9 @@ await check('lock holder issues in one transaction', true, () => issueTx(staffA)
 
 // ---- so phu: doc_number_suffixes ----
 // Cung luat voi bo dem chinh, nhung dem chu cai cho MOT so cu the (12A, 12B).
-const suffixDoc = db => doc(db, 'doc_number_suffixes', '2026-QD-5');
-const sfx = next => ({ year: 2026, typeId: 'QD', seq: 5, next });
+const suffixDoc = (db, id = '2026-QD-5') =>
+  doc(db, 'doc_number_suffixes', id);
+const sfx = (next, year = 2026, seq = 5) => ({ year, typeId: 'QD', seq, next });
 await check('staff re-takes the lock (2)', true, () =>
   setDoc(lockDoc(staffA), mkLock('staffA')));
 // khong giu khoa thi khong duoc cap chu phu
@@ -285,6 +310,13 @@ await check('suffix counter goes backwards (deny)', false, () =>
 await check('suffix counter takes B', true, () => setDoc(suffixDoc(staffA), sfx(3)));
 await check('nobody deletes a suffix counter (deny)', false, () =>
   deleteDoc(suffixDoc(chief)));
+// id phai khop voi (nam, loai, so) ghi trong document
+await check('suffix id disagrees with its fields (deny)', false, () =>
+  setDoc(suffixDoc(staffA, '2026-QD-9'), sfx(2, 2026, 5)));
+// Khoa dat theo LOAI chu khong theo nam, nen chu phu cho mot van ban cua nam
+// truoc (dau thang 1 van gap) van di qua dung cai khoa dang giu.
+await check('lock holder takes suffix on LAST YEAR base', true, () =>
+  setDoc(suffixDoc(staffA, '2025-QD-7'), sfx(2, 2025, 7)));
 // van ban so phu ghi vao so binh thuong (van bi ep createdBy)
 await check('staff writes a suffixed doc number', true, () =>
   setDoc(doc(staffA, 'doc_numbers', 'dn5A'), { ...mkEntry('staffA'), seq: 5, suffix: 'A', number: '5A/QĐ' }));
@@ -304,6 +336,32 @@ await check('chief ghi id la (deny)', false, () =>
   setDoc(optDoc(chief, 'khac'), opts));
 await check('chief ghi signers khong phai mang (deny)', false, () =>
   setDoc(optDoc(chief), { signers: 'x', units: ['Tổ An ninh'] }));
+
+// ---- danh muc LOAI VAN BAN nam trong cung document -------------------------
+// De trong du lieu chu khong trong ma nguon: them/bot mot loai van ban khong
+// phai ra ban cap nhat app.
+const withTypes = types => ({ ...opts, types });
+await check('chief them loai van ban', true, () =>
+  setDoc(optDoc(chief), withTypes([
+    { id: 'QD', label: 'Quyết định (cá biệt)', abbr: 'QĐ' },
+    { id: 'BB', label: 'Biên bản', abbr: 'BB' },
+  ])));
+// ca don vi doc duoc danh muc loai (de do vao dropdown lay so)
+await check('staff doc danh muc loai', true, () => getDoc(optDoc(staffA)));
+// ...nhung khong sua duoc: them mot loai la them mot day so moi cho ca don vi
+await check('staff them loai van ban (deny)', false, () =>
+  setDoc(optDoc(staffA), withTypes([{ id: 'BB', label: 'Biên bản', abbr: 'BB' }])));
+// types phai la mang
+await check('chief ghi types khong phai mang (deny)', false, () =>
+  setDoc(optDoc(chief), withTypes({ id: 'BB' })));
+// va khong duoc nhoi mot danh muc khong lo
+await check('chief ghi 101 loai (deny)', false, () =>
+  setDoc(optDoc(chief), withTypes(
+    Array.from({ length: 101 }, (_, i) => ({ id: `L${i}`, label: `Loại ${i}`, abbr: '' })),
+  )));
+// bo `types` di thi van ghi duoc (app cu chi sua nguoi ky / don vi)
+await check('chief ghi danh muc khong kem types', true, () =>
+  setDoc(optDoc(chief), opts));
 
 // ---- self profile update: role must follow chức vụ ----
 const selfDoc = () => doc(staffA, 'users', 'staffA');

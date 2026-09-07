@@ -48,13 +48,28 @@ service cloud.firestore {
     function canUseDocNumbers() {
       return isApprovedStaff() || isManager();
     }
-    // The caller currently holds the (unexpired) "đang nhập" lock. Used to gate
-    // the counter, so a number can only be issued by whoever holds the book.
-    function holdsDocNumberLock() {
-      let lock = get(/databases/$(database)/documents/doc_number_locks/global);
+    // The caller currently holds the (unexpired) "đang nhập" lock FOR THAT
+    // DOC TYPE. Used to gate the counters, so a number can only be issued by
+    // whoever holds that particular book — one lock per loại văn bản, so two
+    // clerks working on different types never block each other.
+    function holdsDocTypeLock(typeId) {
+      let lock = get(/databases/$(database)/documents/doc_number_locks/$(typeId));
       return lock != null
         && lock.data.uid == request.auth.uid
         && lock.data.expiresAt > request.time.toMillis();
+    }
+    // A counter's doc id must spell out the (năm, loại) it counts for, and a
+    // suffix counter's the (năm, loại, số). Without this, the typeId used to
+    // look up the lock above could name a type the caller holds while the
+    // document written belongs to another type's series.
+    function counterIdMatches(id) {
+      return id == string(request.resource.data.year)
+        + '-' + request.resource.data.typeId;
+    }
+    function suffixIdMatches(id) {
+      return id == string(request.resource.data.year)
+        + '-' + request.resource.data.typeId
+        + '-' + string(request.resource.data.seq);
     }
     // The lock document being written over has already expired (its holder's
     // app died without releasing it), so anyone may take or clear it.
@@ -150,7 +165,7 @@ service cloud.firestore {
     //
     //  doc_numbers/{id}            – văn bản đã được cấp số (sổ gốc)
     //  doc_number_counters/{id}    – { next } : số sẽ cấp tiếp cho một loại/năm
-    //  doc_number_locks/global     – ai đang mở form lấy số
+    //  doc_number_locks/{typeId}   – ai đang lấy số của loại văn bản đó
     match /doc_numbers/{id} {
       allow read: if canUseDocNumbers();
       // `createdBy` bị ép về chính người gọi: sổ luôn truy được ai lấy số.
@@ -162,54 +177,73 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // Bộ đếm chỉ được TĂNG DẦN từng một đơn vị, và chỉ bởi người đang giữ
-    // khoá — chặn cả việc lùi số (cấp trùng) lẫn việc nhảy cóc số.
+    // Bộ đếm chỉ được TĂNG DẦN từng một đơn vị, và chỉ bởi người đang giữ khoá
+    // CỦA CHÍNH LOẠI đó — chặn cả việc lùi số (cấp trùng) lẫn việc nhảy cóc số.
+    // Mỗi năm là một document riêng (`2026-QD`), nên số của năm mới bắt đầu lại
+    // từ 1 mà không ai phải xoá/đặt lại bộ đếm cũ.
     match /doc_number_counters/{id} {
       allow read: if canUseDocNumbers();
       allow create: if canUseDocNumbers()
-        && holdsDocNumberLock()
+        && counterIdMatches(id)
+        && holdsDocTypeLock(request.resource.data.typeId)
         && request.resource.data.next == 2;
       allow update: if canUseDocNumbers()
-        && holdsDocNumberLock()
+        && counterIdMatches(id)
+        && holdsDocTypeLock(request.resource.data.typeId)
         && request.resource.data.next == resource.data.next + 1;
       allow delete: if false;
     }
 
     // Bộ đếm chữ phụ của MỘT số cụ thể (12A, 12B...). Cùng luật với bộ đếm
-    // chính: chỉ người đang giữ khoá được tăng, và chỉ tăng đúng một đơn vị —
-    // lùi lại là cấp trùng chữ, nhảy cóc là mất chữ.
+    // chính: chỉ người đang giữ khoá của loại đó được tăng, và chỉ tăng đúng
+    // một đơn vị — lùi lại là cấp trùng chữ, nhảy cóc là mất chữ.
     match /doc_number_suffixes/{id} {
       allow read: if canUseDocNumbers();
       allow create: if canUseDocNumbers()
-        && holdsDocNumberLock()
+        && suffixIdMatches(id)
+        && holdsDocTypeLock(request.resource.data.typeId)
         && request.resource.data.next == 2;
       allow update: if canUseDocNumbers()
-        && holdsDocNumberLock()
+        && suffixIdMatches(id)
+        && holdsDocTypeLock(request.resource.data.typeId)
         && request.resource.data.next == resource.data.next + 1;
       allow delete: if false;
     }
 
-    // Danh mục người ký / đơn vị ban hành. Cả đơn vị đọc để đổ vào dropdown,
-    // nhưng chỉ quản lý (Trưởng CA / dev) mới sửa được — đây là dữ liệu dùng
-    // chung, một người sửa là cả đơn vị thấy.
+    // Danh mục người ký / đơn vị ban hành / LOẠI VĂN BẢN. Cả đơn vị đọc để đổ
+    // vào dropdown, nhưng chỉ quản lý (Trưởng CA / dev) mới sửa được — đây là
+    // dữ liệu dùng chung, một người sửa là cả đơn vị thấy.
+    //
+    // `types` để trong dữ liệu chứ không nằm trong mã nguồn, để thêm/bớt một
+    // loại văn bản không phải ra bản cập nhật app. Rules không duyệt được từng
+    // phần tử của list (không lặp được), nên chỉ chặn phần thô: đúng kiểu và
+    // không nhồi một danh mục khổng lồ. Ràng buộc thật (id chỉ gồm chữ và số,
+    // không trùng, không đổi id của loại đã dùng) do app giữ — chấp nhận được
+    // vì chỉ quản lý mới ghi được vào đây.
     match /doc_number_options/{id} {
       allow read: if canUseDocNumbers();
       allow write: if isManager()
         && id == 'lists'
         && request.resource.data.signers is list
-        && request.resource.data.units is list;
+        && request.resource.data.units is list
+        && request.resource.data.get('types', []) is list
+        && request.resource.data.get('types', []).size() <= 100;
     }
 
-    // Khoá nhập liệu. Chỉ giành được khi khoá đang trống, đã hết hạn, hoặc là
-    // khoá của chính mình (gia hạn); và khoá ghi ra luôn mang tên người gọi,
-    // nên không ai giả danh người khác "đang nhập" được. Nhả khoá thì rộng
-    // hơn: chủ khoá, quản lý (gỡ kẹt), hoặc bất kỳ ai khi khoá đã hết hạn.
-    match /doc_number_locks/{id} {
+    // Khoá nhập liệu, MỘT DOCUMENT MỖI LOẠI văn bản (id = typeId). Chỉ giành
+    // được khi khoá đang trống, đã hết hạn, hoặc là khoá của chính mình (gia
+    // hạn); và khoá ghi ra luôn mang tên người gọi cùng đúng loại của id, nên
+    // không ai giả danh người khác "đang nhập" hay giữ khoá loại này để cấp số
+    // loại khác được. Nhả khoá thì rộng hơn: chủ khoá, quản lý (gỡ kẹt), hoặc
+    // bất kỳ ai khi khoá đã hết hạn.
+    match /doc_number_locks/{typeId} {
       allow read: if canUseDocNumbers();
       allow create: if canUseDocNumbers()
-        && request.resource.data.uid == request.auth.uid;
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.typeId == typeId;
       allow update: if canUseDocNumbers()
         && request.resource.data.uid == request.auth.uid
+        && request.resource.data.typeId == typeId
         && (resource.data.uid == request.auth.uid || lockExpired());
       allow delete: if isManager()
         || (canUseDocNumbers()
