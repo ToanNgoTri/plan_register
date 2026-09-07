@@ -28,7 +28,8 @@ import {
  *   doc_number_counters/{năm}-{loại}           – { next } : số sẽ cấp tiếp theo
  *   doc_number_suffixes/{năm}-{loại}-{số}      – { next } : chữ cái phụ kế tiếp
  *   doc_number_locks/{loại}                    – ai đang lấy số của loại đó
- *   doc_number_options/lists                   – danh mục người ký / đơn vị
+ *   doc_number_options/lists                   – danh mục loại văn bản / người
+ *                                                ký / đơn vị ban hành
  *
  * HAI thứ phải tuyệt đối không được chạy song song, và cả hai đều dựa trên
  * transaction chứ không dựa vào giao diện:
