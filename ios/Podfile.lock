@@ -4903,7 +4903,7 @@ SPEC CHECKSUMS:
   React-viewtransitionnativemodule: 1fcce36e38de9baeb1d518895bdf34fdb247e0d5
   React-webperformancenativemodule: 175ddea6df1ff887d1bd261470213dc4d854fa2e
   ReactAppDependencyProvider: dcdd0e1b9559a6d8d8aea05286f4ed085091978e
-  ReactCodegen: c963b5428c89de0836ea48d7391ad165748a5fd9
+  ReactCodegen: 536a34c0e6973e7870984feb47dbf0b91e8fcd5f
   ReactCommon: e1aed63c1bbecc37c3895db32d8fe1ef58025ede
   RecaptchaInterop: 11e0b637842dfb48308d242afc3f448062325aba
   RNAppleAuthentication: a89c9804592b38ed4ab11f0aee68d05ba12ad432

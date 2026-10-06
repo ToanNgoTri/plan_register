@@ -11,10 +11,10 @@
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		A0AF8C71CBDEA9514325281B /* Pods_PlanRegister.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D8FCF084D1D10C4689C9DD53 /* Pods_PlanRegister.framework */; };
-		BDAD4D399E6D2505F7AB022A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
-		FE00000000000000000000C2 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = FE00000000000000000000C1 /* GoogleService-Info.plist */; };
 		A1B2C3D10000000000000001 /* SpeechRecognizer.mm in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D10000000000000002 /* SpeechRecognizer.mm */; };
 		A1B2C3D20000000000000001 /* SharedFile.mm in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D20000000000000002 /* SharedFile.mm */; };
+		BDAD4D399E6D2505F7AB022A /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
+		FE00000000000000000000C2 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = FE00000000000000000000C1 /* GoogleService-Info.plist */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -26,14 +26,14 @@
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = PlanRegister/LaunchScreen.storyboard; sourceTree = "<group>"; };
 		846A4BDA14D2204F8CD9E1C4 /* Pods-PlanRegister.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PlanRegister.debug.xcconfig"; path = "Target Support Files/Pods-PlanRegister/Pods-PlanRegister.debug.xcconfig"; sourceTree = "<group>"; };
 		9E4BAD0678CBAF5661BD2C2D /* Pods-PlanRegister.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-PlanRegister.release.xcconfig"; path = "Target Support Files/Pods-PlanRegister/Pods-PlanRegister.release.xcconfig"; sourceTree = "<group>"; };
-		D808B0F1300E5D6200052787 /* PlanRegister.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = PlanRegister.entitlements; path = PlanRegister/PlanRegister.entitlements; sourceTree = "<group>"; };
-		D8FCF084D1D10C4689C9DD53 /* Pods_PlanRegister.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_PlanRegister.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
-		FE00000000000000000000C1 /* GoogleService-Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "PlanRegister/GoogleService-Info.plist"; sourceTree = "<group>"; };
 		A1B2C3D10000000000000002 /* SpeechRecognizer.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = SpeechRecognizer.mm; path = PlanRegister/SpeechRecognizer.mm; sourceTree = "<group>"; };
 		A1B2C3D10000000000000003 /* SpeechRecognizer.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = SpeechRecognizer.h; path = PlanRegister/SpeechRecognizer.h; sourceTree = "<group>"; };
 		A1B2C3D20000000000000002 /* SharedFile.mm */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.objcpp; name = SharedFile.mm; path = PlanRegister/SharedFile.mm; sourceTree = "<group>"; };
 		A1B2C3D20000000000000003 /* SharedFile.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = SharedFile.h; path = PlanRegister/SharedFile.h; sourceTree = "<group>"; };
+		D808B0F1300E5D6200052787 /* PlanRegister.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; name = PlanRegister.entitlements; path = PlanRegister/PlanRegister.entitlements; sourceTree = "<group>"; };
+		D8FCF084D1D10C4689C9DD53 /* Pods_PlanRegister.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = Pods_PlanRegister.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
+		FE00000000000000000000C1 /* GoogleService-Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = "GoogleService-Info.plist"; path = "PlanRegister/GoogleService-Info.plist"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
