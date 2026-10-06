@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -50,82 +52,96 @@ export default function LoginScreen() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.logoBox}>
-        <Text style={styles.logoEmoji}>🗂️</Text>
-      </View>
-      <Text style={styles.title}>Đăng ký Kế hoạch</Text>
-      <Text style={styles.subtitle}>Đăng ký kế hoạch công tác hằng ngày</Text>
-
-      <TextInput
-        style={styles.input}
-        value={email}
-        onChangeText={setEmail}
-        placeholder="Tài khoản (email)"
-        placeholderTextColor={colors.textMuted}
-        autoCapitalize="none"
-        autoCorrect={false}
-        keyboardType="email-address"
-        editable={!pending}
-      />
-      <TextInput
-        style={styles.input}
-        value={password}
-        onChangeText={setPassword}
-        placeholder="Mật khẩu"
-        placeholderTextColor={colors.textMuted}
-        secureTextEntry
-        autoCapitalize="none"
-        autoCorrect={false}
-        editable={!pending}
-      />
-      <TouchableOpacity
-        style={styles.button}
-        onPress={() => runSignIn('email', () => signInEmail(email, password))}
-        disabled={!!pending}
-        activeOpacity={0.85}
+    // Android 15+ ép edge-to-edge nên android:windowSoftInputMode="adjustResize"
+    // không còn thu nhỏ màn hình khi bàn phím mở — phải tự chừa chỗ (padding)
+    // trên CẢ HAI nền tảng, và cho cuộn để ô mật khẩu / nút đăng nhập luôn
+    // kéo lên được phía trên bàn phím.
+    <KeyboardAvoidingView style={styles.flex} behavior="padding">
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
       >
-        {pending === 'email' ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Đăng nhập</Text>
-        )}
-      </TouchableOpacity>
+        <View style={styles.logoBox}>
+          <Text style={styles.logoEmoji}>🗂️</Text>
+        </View>
+        <Text style={styles.title}>Đăng ký Kế hoạch</Text>
+        <Text style={styles.subtitle}>Đăng ký kế hoạch công tác hằng ngày</Text>
 
-      <View style={styles.dividerRow}>
-        <View style={styles.divider} />
-        <Text style={styles.dividerText}>hoặc</Text>
-        <View style={styles.divider} />
-      </View>
-
-      <TouchableOpacity
-        style={[styles.button, styles.googleButton]}
-        onPress={() => runSignIn('google', signIn)}
-        disabled={!!pending}
-        activeOpacity={0.85}
-      >
-        {pending === 'google' ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Đăng nhập bằng Google</Text>
-        )}
-      </TouchableOpacity>
-
-      {showAppleButton && (
-        <AppleButton
-          style={styles.appleButton}
-          cornerRadius={12}
-          buttonStyle={AppleButton.Style.BLACK}
-          buttonType={AppleButton.Type.SIGN_IN}
-          onPress={() => runSignIn('apple', signInApple)}
+        <TextInput
+          style={styles.input}
+          value={email}
+          onChangeText={setEmail}
+          placeholder="Tài khoản (email)"
+          placeholderTextColor={colors.textMuted}
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="email-address"
+          editable={!pending}
         />
-      )}
-    </View>
+        <TextInput
+          style={styles.input}
+          value={password}
+          onChangeText={setPassword}
+          placeholder="Mật khẩu"
+          placeholderTextColor={colors.textMuted}
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+          editable={!pending}
+        />
+        <TouchableOpacity
+          style={styles.button}
+          onPress={() => runSignIn('email', () => signInEmail(email, password))}
+          disabled={!!pending}
+          activeOpacity={0.85}
+        >
+          {pending === 'email' ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Đăng nhập</Text>
+          )}
+        </TouchableOpacity>
+
+        <View style={styles.dividerRow}>
+          <View style={styles.divider} />
+          <Text style={styles.dividerText}>hoặc</Text>
+          <View style={styles.divider} />
+        </View>
+
+        <TouchableOpacity
+          style={[styles.button, styles.googleButton]}
+          onPress={() => runSignIn('google', signIn)}
+          disabled={!!pending}
+          activeOpacity={0.85}
+        >
+          {pending === 'google' ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>Đăng nhập bằng Google</Text>
+          )}
+        </TouchableOpacity>
+
+        {showAppleButton && (
+          <AppleButton
+            style={styles.appleButton}
+            cornerRadius={12}
+            buttonStyle={AppleButton.Style.BLACK}
+            buttonType={AppleButton.Type.SIGN_IN}
+            onPress={() => runSignIn('apple', signInApple)}
+          />
+        )}
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 const styles = StyleSheet.create({
-  container: {
+  flex: {
     flex: 1,
+    backgroundColor: colors.bg,
+  },
+  container: {
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.bg,

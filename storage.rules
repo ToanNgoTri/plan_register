@@ -30,7 +30,7 @@ service firebase.storage {
     match /duty/{force}/{fileName} {
       allow read: if canUseDuty();
 
-      // Only images and Word documents, max 15MB — keep in sync with
+      // Only images, Word documents and PDFs, max 15MB — keep in sync with
       // DUTY_MAX_FILE_BYTES in src/config/constants.js.
       allow create, update: if canUseDuty()
         && force in ['CA', 'ANCS']
@@ -39,6 +39,7 @@ service firebase.storage {
              request.resource.contentType.matches('image/.*')
              || request.resource.contentType in [
                   'application/msword',
+                  'application/pdf',
                   'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
                 ]
            );

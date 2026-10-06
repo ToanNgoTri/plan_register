@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Modal,
   Pressable,
   ScrollView,
@@ -113,10 +114,7 @@ export default function SettingsScreen() {
     ]);
 
   return (
-    <ScrollView
-      style={styles.flex}
-      contentContainerStyle={styles.container}
-    >
+    <ScrollView style={styles.flex} contentContainerStyle={styles.container}>
       <TouchableOpacity
         style={styles.avatarWrap}
         activeOpacity={0.8}
@@ -251,75 +249,81 @@ function EditProfileModal({ visible, profile, onClose, onDeleted }) {
       animationType="slide"
       onRequestClose={onClose}
     >
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet}>
-          <Text style={styles.sheetTitle}>Chỉnh sửa thông tin</Text>
+      {/* Android 15+ ép edge-to-edge: modal không tự co lại khi bàn phím mở
+          nữa, nên tự chừa chỗ bằng padding trên cả hai nền tảng. */}
+      <KeyboardAvoidingView style={styles.modalFill} behavior="padding">
+        <Pressable style={styles.backdrop} onPress={onClose}>
+          <Pressable style={styles.sheet}>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              <Text style={styles.sheetTitle}>Chỉnh sửa thông tin</Text>
 
-          <Text style={styles.label}>Họ và tên</Text>
-          <TextInput
-            style={styles.input}
-            value={fullName}
-            onChangeText={setFullName}
-            placeholder="Nhập họ và tên"
-            placeholderTextColor={colors.textMuted}
-          />
+              <Text style={styles.label}>Họ và tên</Text>
+              <TextInput
+                style={styles.input}
+                value={fullName}
+                onChangeText={setFullName}
+                placeholder="Nhập họ và tên"
+                placeholderTextColor={colors.textMuted}
+              />
 
-          <Text style={[styles.label, styles.labelSpaced]}>Chức vụ</Text>
-          <PositionSelect
-            value={position}
-            options={positionOptions}
-            onChange={setPosition}
-          />
+              <Text style={[styles.label, styles.labelSpaced]}>Chức vụ</Text>
+              <PositionSelect
+                value={position}
+                options={positionOptions}
+                onChange={setPosition}
+              />
 
-          <Text style={[styles.label, styles.labelSpaced]}>
-            Đơn vị / Phòng ban
-          </Text>
-          <TextInput
-            style={styles.input}
-            value={unit}
-            onChangeText={setUnit}
-            placeholder="VD: Công an phường Hàng Gòn"
-            placeholderTextColor={colors.textMuted}
-          />
+              <Text style={[styles.label, styles.labelSpaced]}>
+                Đơn vị / Phòng ban
+              </Text>
+              <TextInput
+                style={styles.input}
+                value={unit}
+                onChangeText={setUnit}
+                placeholder="VD: Công an phường Hàng Gòn"
+                placeholderTextColor={colors.textMuted}
+              />
 
-          <TouchableOpacity
-            style={[styles.btn, styles.saveBtn]}
-            activeOpacity={0.85}
-            onPress={save}
-            disabled={saving || deleting}
-          >
-            {saving ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.btnText}>Lưu thông tin</Text>
-            )}
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.btn, styles.saveBtn]}
+                activeOpacity={0.85}
+                onPress={save}
+                disabled={saving || deleting}
+              >
+                {saving ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.btnText}>Lưu thông tin</Text>
+                )}
+              </TouchableOpacity>
 
-          <TouchableOpacity
-            style={styles.cancelBtn}
-            activeOpacity={0.7}
-            onPress={onClose}
-            disabled={saving || deleting}
-          >
-            <Text style={styles.cancelText}>Huỷ</Text>
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                activeOpacity={0.7}
+                onPress={onClose}
+                disabled={saving || deleting}
+              >
+                <Text style={styles.cancelText}>Huỷ</Text>
+              </TouchableOpacity>
 
-          <View style={styles.divider} />
+              <View style={styles.divider} />
 
-          <TouchableOpacity
-            style={styles.deleteBtn}
-            activeOpacity={0.85}
-            onPress={confirmDelete}
-            disabled={saving || deleting}
-          >
-            {deleting ? (
-              <ActivityIndicator color={colors.danger} />
-            ) : (
-              <Text style={styles.deleteText}>Xoá tài khoản</Text>
-            )}
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.deleteBtn}
+                activeOpacity={0.85}
+                onPress={confirmDelete}
+                disabled={saving || deleting}
+              >
+                {deleting ? (
+                  <ActivityIndicator color={colors.danger} />
+                ) : (
+                  <Text style={styles.deleteText}>Xoá tài khoản</Text>
+                )}
+              </TouchableOpacity>
+            </ScrollView>
+          </Pressable>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -415,12 +419,16 @@ const styles = StyleSheet.create({
     color: colors.danger,
   },
   // Edit modal
+  modalFill: {
+    flex: 1,
+  },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
     justifyContent: 'flex-end',
   },
   sheet: {
+    maxHeight: '90%',
     backgroundColor: colors.bg,
     borderTopLeftRadius: 18,
     borderTopRightRadius: 18,

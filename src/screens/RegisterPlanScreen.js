@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
-  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -11,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useHeaderHeight } from '@react-navigation/elements';
 import { useAuth } from '../context/AuthContext';
 import {
   registerPlan,
@@ -22,6 +22,7 @@ import { useToday } from '../hooks/useToday';
 import { formatDateVi, isWeekend, toDateKey } from '../utils/date';
 import { colors, spacing } from '../theme';
 export default function RegisterPlanScreen() {
+  const headerHeight = useHeaderHeight();
   const { profile } = useAuth();
   const [content, setContent] = useState('');
   const [existing, setExisting] = useState(null);
@@ -111,9 +112,14 @@ export default function RegisterPlanScreen() {
     }
   };
   return (
+    // // Android 15+ ép edge-to-edge nên adjustResize không còn thu nhỏ màn hình khi
+    // bàn phím mở — phải tự chừa chỗ bằng padding trên CẢ HAI nền tảng.
+    // KeyboardAvoidingView đo vị trí tương đối với khung cha, nên phải bù
+    // chiều cao header phía trên thì mới tính đúng phần bị bàn phím che.
     <KeyboardAvoidingView
       style={styles.flex}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior="padding"
+      keyboardVerticalOffset={headerHeight}
     >
       <ScrollView
         contentContainerStyle={styles.container}

@@ -4,6 +4,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AuthProvider } from './src/context/AuthContext';
 import RootNavigator from './src/navigation/RootNavigator';
 import ForceUpdateGate from './src/components/ForceUpdateGate';
+import ErrorBoundary from './src/components/ErrorBoundary';
 import { colors } from './src/theme';
 export default function App() {
   return (
@@ -12,9 +13,12 @@ export default function App() {
         barStyle="light-content"
         backgroundColor={colors.primaryDark}
       />
-      <AuthProvider>
-        <RootNavigator />
-      </AuthProvider>
+      {/* Lỗi JS bất ngờ hiện màn hình "Thử lại" thay vì làm sập cả app. */}
+      <ErrorBoundary>
+        <AuthProvider>
+          <RootNavigator />
+        </AuthProvider>
+      </ErrorBoundary>
       {/* Mandatory-update gate, overlays everything when a new version exists. */}
       <ForceUpdateGate />
     </SafeAreaProvider>

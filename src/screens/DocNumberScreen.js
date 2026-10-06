@@ -5,7 +5,6 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -452,8 +451,7 @@ function DocNumberRow({ item, mine }) {
           Người ký: <Text style={styles.rowMetaValue}>{item.signer}</Text>
         </Text>
         <Text style={styles.rowMeta}>
-          Đơn vị ban hành:{' '}
-          <Text style={styles.rowMetaValue}>{item.unit}</Text>
+          Đơn vị ban hành: <Text style={styles.rowMetaValue}>{item.unit}</Text>
         </Text>
         <Text style={styles.rowFoot}>
           {item.createdByName} lấy số lúc {formatDateTimeVi(item.createdAt)}
@@ -626,7 +624,9 @@ function IssueSheet({ visible, profile, type, options, onClose, onIssued }) {
           lại styles.flex, nó có màu nền đục. */}
       <KeyboardAvoidingView
         style={styles.modalFill}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        // Android 15+ ép edge-to-edge: modal không tự co lại khi bàn phím mở
+        // nữa, nên dùng padding trên cả hai nền tảng.
+        behavior="padding"
       >
         <Pressable style={styles.backdrop} onPress={cancel}>
           <Pressable style={styles.sheet}>
@@ -943,12 +943,11 @@ function OptionsSheet({ visible, profile, options, onClose }) {
     >
       <KeyboardAvoidingView
         style={styles.modalFill}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        // Android 15+ ép edge-to-edge: modal không tự co lại khi bàn phím mở
+        // nữa, nên dùng padding trên cả hai nền tảng.
+        behavior="padding"
       >
-        <Pressable
-          style={styles.backdrop}
-          onPress={() => !saving && onClose()}
-        >
+        <Pressable style={styles.backdrop} onPress={() => !saving && onClose()}>
           <Pressable style={styles.sheet}>
             <ScrollView keyboardShouldPersistTaps="handled">
               <Text style={styles.sheetTitle}>Danh mục dùng chung</Text>
@@ -965,7 +964,9 @@ function OptionsSheet({ visible, profile, options, onClose }) {
                     <Text style={styles.optText}>{t.label}</Text>
                     <Text style={styles.typeMeta}>
                       Mã {t.id}
-                      {t.abbr ? ` · số ghi "…/${t.abbr}"` : ' · số không có chữ viết tắt'}
+                      {t.abbr
+                        ? ` · số ghi "…/${t.abbr}"`
+                        : ' · số không có chữ viết tắt'}
                     </Text>
                   </View>
                   <TouchableOpacity
@@ -1047,7 +1048,9 @@ function OptionsSheet({ visible, profile, options, onClose }) {
                   placeholder="Thêm tên đơn vị"
                   placeholderTextColor={colors.textMuted}
                   editable={!saving}
-                  onSubmitEditing={() => add(newUnit, units, setUnits, setNewUnit)}
+                  onSubmitEditing={() =>
+                    add(newUnit, units, setUnits, setNewUnit)
+                  }
                 />
                 <TouchableOpacity
                   style={styles.addBtn}

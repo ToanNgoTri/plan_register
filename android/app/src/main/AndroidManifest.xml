@@ -41,6 +41,29 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
+
+        <!--
+          Nhận tệp "chuyển lịch" (Word, PDF hoặc ảnh) chia sẻ từ Zalo để đăng lên tab
+          Lịch trực.
+
+          Khai `application/*` chứ không liệt kê riêng doc/docx/pdf: tệp tải về từ
+          Zalo rất hay mang kiểu application/octet-stream (Zalo không đoán được
+          kiểu từ đuôi tên), liệt kê hẹp thì app không hiện trong bảng chia sẻ.
+        -->
+        <intent-filter>
+            <action android:name="android.intent.action.SEND" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:mimeType="image/*" />
+            <data android:mimeType="application/*" />
+        </intent-filter>
+
+        <!-- Nút "Mở bằng" ở màn hình xem tệp của Zalo. -->
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="content" android:mimeType="*/*" />
+            <data android:scheme="file" android:mimeType="*/*" />
+        </intent-filter>
       </activity>
     </application>
 </manifest>

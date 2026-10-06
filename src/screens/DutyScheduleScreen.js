@@ -21,6 +21,10 @@ import {
   openScheduleDocument,
   subscribeDutySchedule,
 } from '../services/dutyService';
+import {
+  subscribeIncomingDutyFile,
+  takeIncomingDutyFile,
+} from '../services/sharedFileService';
 import { FORCES } from '../config/constants';
 import { formatDateTimeVi } from '../utils/date';
 import { formatBytes } from '../utils/file';
@@ -28,7 +32,7 @@ import { colors, spacing } from '../theme';
 
 /**
  * Lịch trực: mỗi lực lượng (CA / ANCS) có đúng MỘT bản hiện hành, là ảnh chụp
- * hoặc tệp Word do cán bộ đăng lên. Đăng bản mới sẽ thay thế bản cũ.
+ * hoặc tệp Word / PDF do cán bộ đăng lên. Đăng bản mới sẽ thay thế bản cũ.
  *
  * Ai cũng đăng được, nên bản lịch luôn hiển thị tên người đăng và thời điểm
  * đăng; chỉ người đã đăng (hoặc Trưởng CA) mới xoá được.
@@ -40,6 +44,8 @@ export default function DutyScheduleScreen() {
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
+  // Tệp "chuyển lịch" vừa chia sẻ từ Zalo, mở sẵn trong bảng đăng.
+  const [sharedFile, setSharedFile] = useState(null);
   const [viewerOpen, setViewerOpen] = useState(false);
   const [opening, setOpening] = useState(false);
   // Chỉ dùng khi listener đứt (mất mạng / hết phiên) để nối lại.
@@ -64,6 +70,25 @@ export default function DutyScheduleScreen() {
     );
     return unsub;
   }, [forceId, retry]);
+
+  // Tệp có thể tới trước khi màn hình này được dựng (mở app bằng tệp, tab
+  // lười) hoặc trong lúc đang xem — bắt cả hai.
+  useEffect(() => {
+    const openShared = () => {
+      const file = takeIncomingDutyFile();
+      if (file) {
+        setSharedFile(file);
+        setSheetOpen(true);
+      }
+    };
+    openShared();
+    return subscribeIncomingDutyFile(openShared);
+  }, []);
+
+  const closeSheet = useCallback(() => {
+    setSheetOpen(false);
+    setSharedFile(null);
+  }, []);
 
   const reconnect = useCallback(() => setRetry(n => n + 1), []);
 
@@ -99,8 +124,8 @@ export default function DutyScheduleScreen() {
   };
 
   /**
-   * Mở tệp Word bằng trình xem của hệ điều hành. Nếu máy không có ứng dụng nào
-   * đọc được .docx (chỉ gặp trên Android), đề nghị mở bằng trình duyệt.
+   * Mở tệp Word / PDF bằng trình xem của hệ điều hành. Nếu máy không có ứng
+   * dụng nào đọc được (chỉ gặp trên Android), đề nghị mở bằng trình duyệt.
    */
   const openDocument = async () => {
     try {
@@ -109,7 +134,9 @@ export default function DutyScheduleScreen() {
     } catch {
       Alert.alert(
         'Không mở được tệp',
-        'Máy chưa có ứng dụng đọc tệp Word. Mở bằng trình duyệt thay thế?',
+        schedule.fileType === 'pdf'
+          ? 'Máy chưa có ứng dụng đọc tệp PDF. Mở bằng trình duyệt thay thế?'
+          : 'Máy chưa có ứng dụng đọc tệp Word. Mở bằng trình duyệt thay thế?',
         [
           { text: 'Huỷ', style: 'cancel' },
           { text: 'Mở trình duyệt', onPress: openInBrowser },
@@ -147,7 +174,7 @@ export default function DutyScheduleScreen() {
               Chưa có lịch trực {force.title}
             </Text>
             <Text style={styles.emptyText}>
-              Đăng ảnh chụp hoặc tệp Word để cả đơn vị cùng xem.
+              Đăng ảnh chụp, tệp Word hoặc PDF để cả đơn vị cùng xem.
             </Text>
           </View>
         ) : (
@@ -223,7 +250,9 @@ export default function DutyScheduleScreen() {
         force={forceId}
         forceTitle={force.title}
         existing={schedule}
-        onClose={() => setSheetOpen(false)}
+        initialFile={sharedFile}
+        onForceChange={setForceId}
+        onClose={closeSheet}
       />
 
       {schedule?.fileType === 'image' ? (

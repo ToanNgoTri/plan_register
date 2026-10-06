@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -16,6 +16,9 @@ import InactiveScreen from '../screens/InactiveScreen';
 import ProfileErrorScreen from '../screens/ProfileErrorScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import BossAlertListener from '../components/BossAlertListener';
+import IncomingDutyFileListener from '../components/IncomingDutyFileListener';
+import SplashScreen from '../components/SplashScreen';
+import { navigationRef } from './navigationRef';
 import { displayNameOf } from '../services/userService';
 import { colors } from '../theme';
 const Tab = createBottomTabNavigator();
@@ -224,13 +227,6 @@ function DevTabs() {
     </>
   );
 }
-function Splash() {
-  return (
-    <View style={styles.splash}>
-      <ActivityIndicator size="large" color={colors.primary} />
-    </View>
-  );
-}
 export default function RootNavigator() {
   const {
     initializing,
@@ -241,10 +237,14 @@ export default function RootNavigator() {
     isDev,
     isApproved,
     isActive,
+    retryProfile,
   } = useAuth();
+  // Đã đăng nhập mà kẹt ở bước đọc hồ sơ (mạng chập chờn) thì cho thử lại;
+  // chưa có phiên thì Firebase tự khôi phục từ máy, không có gì để thử lại.
+  const splash = <SplashScreen onRetry={firebaseUser ? retryProfile : null} />;
   let content;
   if (initializing) {
-    content = <Splash />;
+    content = splash;
   } else if (!firebaseUser) {
     content = (
       <Stack.Navigator
@@ -267,7 +267,7 @@ export default function RootNavigator() {
         <Stack.Screen name="ProfileError" component={ProfileErrorScreen} />
       </Stack.Navigator>
     ) : (
-      <Splash />
+      splash
     );
   } else if (!isBoss && !isDev && !isApproved) {
     // Signed in staff, not yet approved → locked out of all features.
@@ -292,9 +292,17 @@ export default function RootNavigator() {
       </Stack.Navigator>
     );
   } else {
-    content = isBoss ? <BossTabs /> : isDev ? <DevTabs /> : <StaffTabs />;
+    content = (
+      <>
+        {/* Tệp "chuyển lịch" chia sẻ từ Zalo chỉ được nhận khi đã vào app. */}
+        <IncomingDutyFileListener />
+        {isBoss ? <BossTabs /> : isDev ? <DevTabs /> : <StaffTabs />}
+      </>
+    );
   }
-  return <NavigationContainer>{content}</NavigationContainer>;
+  return (
+    <NavigationContainer ref={navigationRef}>{content}</NavigationContainer>
+  );
 }
 const styles = StyleSheet.create({
   greeting: {
@@ -307,11 +315,5 @@ const styles = StyleSheet.create({
   },
   tabIcon: {
     fontSize: 20,
-  },
-  splash: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.bg,
   },
 });

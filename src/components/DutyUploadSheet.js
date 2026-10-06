@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  KeyboardAvoidingView,
   Modal,
   Pressable,
   ScrollView,
@@ -12,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
+import ForceTabs from './ForceTabs';
 import {
   pickScheduleDocx,
   pickScheduleImage,
@@ -21,16 +23,22 @@ import { formatBytes } from '../utils/file';
 import { colors, spacing } from '../theme';
 
 /**
- * Bảng đăng lịch trực: chọn ảnh hoặc tệp Word, thêm ghi chú, rồi đăng.
+ * Bảng đăng lịch trực: chọn ảnh hoặc tệp Word / PDF, thêm ghi chú, rồi đăng.
  *
  * Bản đăng lên THAY THẾ bản hiện hành của lực lượng đó, nên khi đã có lịch cũ
  * thì hiện cảnh báo rõ ràng trước khi người dùng bấm đăng.
+ *
+ * `initialFile`: tệp chia sẻ thẳng từ Zalo, chọn sẵn khi mở bảng. Khi đó người
+ * dùng chưa kịp chọn lực lượng ở màn hình Lịch trực, nên bảng hiện thêm thanh
+ * chọn CA / ANCS (`onForceChange`).
  */
 export default function DutyUploadSheet({
   visible,
   force,
   forceTitle,
   existing,
+  initialFile,
+  onForceChange,
   onClose,
 }) {
   const { profile } = useAuth();
@@ -41,10 +49,16 @@ export default function DutyUploadSheet({
   // Mỗi lần mở lại là một lượt đăng mới → xoá lựa chọn của lượt trước.
   useEffect(() => {
     if (visible) {
-      setFile(null);
       setNote('');
     }
   }, [visible]);
+  // Tách riêng: chia sẻ thêm tệp khác trong lúc bảng đang mở thì chỉ thay tệp,
+  // không xoá ghi chú đang gõ.
+  useEffect(() => {
+    if (visible) {
+      setFile(initialFile ?? null);
+    }
+  }, [visible, initialFile]);
 
   const choose = async picker => {
     try {
@@ -59,7 +73,7 @@ export default function DutyUploadSheet({
 
   const submit = async () => {
     if (!file) {
-      Alert.alert('Chưa chọn tệp', 'Vui lòng chọn ảnh hoặc tệp Word.');
+      Alert.alert('Chưa chọn tệp', 'Vui lòng chọn ảnh hoặc tệp Word / PDF.');
       return;
     }
     try {
@@ -88,107 +102,126 @@ export default function DutyUploadSheet({
       animationType="slide"
       onRequestClose={close}
     >
-      <Pressable style={styles.backdrop} onPress={close}>
-        <Pressable style={styles.sheet}>
-          <ScrollView keyboardShouldPersistTaps="handled">
-            <Text style={styles.title}>Đăng lịch trực {forceTitle}</Text>
+      {/* Android 15+ ép edge-to-edge: modal không tự co lại khi bàn phím mở
+          nữa, nên tự chừa chỗ bằng padding trên cả hai nền tảng. */}
+      <KeyboardAvoidingView style={styles.modalFill} behavior="padding">
+        <Pressable style={styles.backdrop} onPress={close}>
+          <Pressable style={styles.sheet}>
+            <ScrollView keyboardShouldPersistTaps="handled">
+              <Text style={styles.title}>Đăng lịch trực {forceTitle}</Text>
 
-            {existing ? (
-              <View style={styles.warn}>
-                <Text style={styles.warnText}>
-                  Lịch trực {forceTitle} hiện tại sẽ bị thay thế và không khôi
-                  phục được.
-                </Text>
-              </View>
-            ) : null}
+              {initialFile && onForceChange ? (
+                <View style={styles.forcePick}>
+                  <Text style={styles.label}>Đăng cho lực lượng</Text>
+                  <ForceTabs
+                    value={force}
+                    onChange={id => !uploading && onForceChange(id)}
+                  />
+                </View>
+              ) : null}
 
-            <Text style={styles.label}>Chọn nguồn</Text>
-            <View style={styles.sourceRow}>
-              <TouchableOpacity
-                style={[
-                  styles.sourceBtn,
-                  file?.kind === 'image' && styles.sourceBtnActive,
-                ]}
-                activeOpacity={0.85}
-                onPress={() => choose(pickScheduleImage)}
-                disabled={uploading}
-              >
-                <Text style={styles.sourceEmoji}>🖼️</Text>
-                <Text style={styles.sourceText}>Ảnh</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.sourceBtn,
-                  file?.kind === 'docx' && styles.sourceBtnActive,
-                ]}
-                activeOpacity={0.85}
-                onPress={() => choose(pickScheduleDocx)}
-                disabled={uploading}
-              >
-                <Text style={styles.sourceEmoji}>📄</Text>
-                <Text style={styles.sourceText}>Tệp Word</Text>
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.hint}>
-              Tệp nhận từ Zalo: lưu về máy trước, rồi chọn ở đây.
-            </Text>
-
-            {file ? (
-              <View style={styles.picked}>
-                <Text style={styles.pickedName} numberOfLines={2}>
-                  {file.name}
-                </Text>
-                {formatBytes(file.size) ? (
-                  <Text style={styles.pickedMeta}>
-                    {formatBytes(file.size)}
+              {existing ? (
+                <View style={styles.warn}>
+                  <Text style={styles.warnText}>
+                    Lịch trực {forceTitle} hiện tại sẽ bị thay thế và không khôi
+                    phục được.
                   </Text>
-                ) : null}
+                </View>
+              ) : null}
+
+              <Text style={styles.label}>Chọn nguồn</Text>
+              <View style={styles.sourceRow}>
+                <TouchableOpacity
+                  style={[
+                    styles.sourceBtn,
+                    file?.kind === 'image' && styles.sourceBtnActive,
+                  ]}
+                  activeOpacity={0.85}
+                  onPress={() => choose(pickScheduleImage)}
+                  disabled={uploading}
+                >
+                  <Text style={styles.sourceEmoji}>🖼️</Text>
+                  <Text style={styles.sourceText}>Ảnh</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.sourceBtn,
+                    (file?.kind === 'docx' || file?.kind === 'pdf') &&
+                    styles.sourceBtnActive,
+                  ]}
+                  activeOpacity={0.85}
+                  onPress={() => choose(pickScheduleDocx)}
+                  disabled={uploading}
+                >
+                  <Text style={styles.sourceEmoji}>📄</Text>
+                  <Text style={styles.sourceText}>Word / PDF</Text>
+                </TouchableOpacity>
               </View>
-            ) : null}
+              <Text style={styles.hint}>
+                Tệp nhận từ Zalo: bấm giữ tệp → Chia sẻ → chọn app này, hoặc lưu
+                về máy rồi chọn ở đây.
+              </Text>
 
-            <Text style={[styles.label, styles.labelSpaced]}>
-              Ghi chú (không bắt buộc)
-            </Text>
-            <TextInput
-              style={styles.input}
-              value={note}
-              onChangeText={setNote}
-              placeholder="VD: Lịch trực tháng 8/2026"
-              placeholderTextColor={colors.textMuted}
-              multiline
-              editable={!uploading}
-            />
+              {file ? (
+                <View style={styles.picked}>
+                  <Text style={styles.pickedName} numberOfLines={2}>
+                    {file.name}
+                  </Text>
+                  {formatBytes(file.size) ? (
+                    <Text style={styles.pickedMeta}>
+                      {formatBytes(file.size)}
+                    </Text>
+                  ) : null}
+                </View>
+              ) : null}
 
-            <TouchableOpacity
-              style={[styles.btn, !file && styles.btnDisabled]}
-              activeOpacity={0.85}
-              onPress={submit}
-              disabled={uploading || !file}
-            >
-              {uploading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.btnText}>
-                  {existing ? 'Thay thế lịch trực' : 'Đăng lịch trực'}
-                </Text>
-              )}
-            </TouchableOpacity>
+              <Text style={[styles.label, styles.labelSpaced]}>
+                Ghi chú (không bắt buộc)
+              </Text>
+              <TextInput
+                style={styles.input}
+                value={note}
+                onChangeText={setNote}
+                placeholder="VD: Lịch trực tháng 8/2026"
+                placeholderTextColor={colors.textMuted}
+                multiline
+                editable={!uploading}
+              />
 
-            <TouchableOpacity
-              style={styles.cancelBtn}
-              activeOpacity={0.7}
-              onPress={close}
-              disabled={uploading}
-            >
-              <Text style={styles.cancelText}>Huỷ</Text>
-            </TouchableOpacity>
-          </ScrollView>
+              <TouchableOpacity
+                style={[styles.btn, !file && styles.btnDisabled]}
+                activeOpacity={0.85}
+                onPress={submit}
+                disabled={uploading || !file}
+              >
+                {uploading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <Text style={styles.btnText}>
+                    {existing ? 'Thay thế lịch trực' : 'Đăng lịch trực'}
+                  </Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.cancelBtn}
+                activeOpacity={0.7}
+                onPress={close}
+                disabled={uploading}
+              >
+                <Text style={styles.cancelText}>Huỷ</Text>
+              </TouchableOpacity>
+            </ScrollView>
+          </Pressable>
         </Pressable>
-      </Pressable>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
 const styles = StyleSheet.create({
+  modalFill: {
+    flex: 1,
+  },
   backdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.35)',
@@ -217,6 +250,9 @@ const styles = StyleSheet.create({
     color: colors.warning,
     fontSize: 13,
     fontWeight: '600',
+  },
+  forcePick: {
+    marginBottom: spacing.md,
   },
   label: {
     color: colors.text,

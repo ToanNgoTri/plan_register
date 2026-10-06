@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
+  KeyboardAvoidingView,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -8,7 +10,10 @@ import {
   View,
 } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import { subscribeChiefExists, updateProfileInfo } from '../services/userService';
+import {
+  subscribeChiefExists,
+  updateProfileInfo,
+} from '../services/userService';
 import PositionSelect from '../components/PositionSelect';
 import { BOSS_POSITION, POSITIONS } from '../config/constants';
 import { colors, spacing } from '../theme';
@@ -78,74 +83,88 @@ export default function PendingApprovalScreen() {
     }
   };
   return (
-    <View style={styles.container}>
-      <View style={styles.badge}>
-        <Text style={styles.badgeEmoji}>⏳</Text>
-      </View>
-      <Text style={styles.title}>Tài khoản chưa được duyệt</Text>
-      <Text style={styles.desc}>
-        Xin chào {profile?.displayName}. Tài khoản của bạn đang chờ quản lý phê
-        duyệt. Bạn sẽ dùng được ứng dụng ngay sau khi được duyệt.
-      </Text>
-
-      <Text style={styles.label}>Họ và tên (không bắt buộc)</Text>
-      <TextInput
-        style={styles.input}
-        value={fullName}
-        onChangeText={t => {
-          setNameTouched(true);
-          setFullName(t);
-          setSaved(false); // editing again re-enables saving
-        }}
-        placeholder="Nhập họ và tên của bạn"
-        placeholderTextColor={colors.textMuted}
-      />
-
-      <Text style={[styles.label, styles.labelSpaced]}>Chức vụ</Text>
-      <PositionSelect
-        value={position}
-        options={positionOptions}
-        onChange={p => {
-          setPosition(p);
-          setSaved(false); // editing again re-enables saving
-        }}
-      />
-
-      <Text style={[styles.label, styles.labelSpaced]}>Đơn vị / Phòng ban</Text>
-      <TextInput
-        style={styles.input}
-        value={unit}
-        onChangeText={t => {
-          setUnit(t);
-          setSaved(false); // editing again re-enables saving
-        }}
-        placeholder="VD: Phòng Kỹ thuật Hình sự"
-        placeholderTextColor={colors.textMuted}
-      />
-      <TouchableOpacity
-        style={[styles.saveBtn, saved && styles.saveBtnDone]}
-        onPress={save}
-        disabled={saving || saved}
-        activeOpacity={0.85}
+    // Android 15+ ép edge-to-edge nên adjustResize không còn thu nhỏ màn hình khi
+    // bàn phím mở — phải tự chừa chỗ bằng padding trên CẢ HAI nền tảng.
+    <KeyboardAvoidingView style={styles.flex} behavior="padding">
+      <ScrollView
+        style={styles.flex}
+        contentContainerStyle={styles.container}
+        keyboardShouldPersistTaps="handled"
       >
-        <Text style={[styles.saveText, saved && styles.saveTextDone]}>
-          {saving
-            ? 'Đang lưu…'
-            : saved
-            ? 'Tài khoản đang chờ phê duyệt…'
-            : 'Lưu thông tin'}
+        <View style={styles.badge}>
+          <Text style={styles.badgeEmoji}>⏳</Text>
+        </View>
+        <Text style={styles.title}>Tài khoản chưa được duyệt</Text>
+        <Text style={styles.desc}>
+          Xin chào {profile?.displayName}. Tài khoản của bạn đang chờ quản lý
+          phê duyệt. Bạn sẽ dùng được ứng dụng ngay sau khi được duyệt.
         </Text>
-      </TouchableOpacity>
 
-      <TouchableOpacity onPress={signOut} style={styles.signOut}>
-        <Text style={styles.signOutText}>Đăng xuất</Text>
-      </TouchableOpacity>
-    </View>
+        <Text style={styles.label}>Họ và tên (không bắt buộc)</Text>
+        <TextInput
+          style={styles.input}
+          value={fullName}
+          onChangeText={t => {
+            setNameTouched(true);
+            setFullName(t);
+            setSaved(false); // editing again re-enables saving
+          }}
+          placeholder="Nhập họ và tên của bạn"
+          placeholderTextColor={colors.textMuted}
+        />
+
+        <Text style={[styles.label, styles.labelSpaced]}>Chức vụ</Text>
+        <PositionSelect
+          value={position}
+          options={positionOptions}
+          onChange={p => {
+            setPosition(p);
+            setSaved(false); // editing again re-enables saving
+          }}
+        />
+
+        <Text style={[styles.label, styles.labelSpaced]}>
+          Đơn vị / Phòng ban
+        </Text>
+        <TextInput
+          style={styles.input}
+          value={unit}
+          onChangeText={t => {
+            setUnit(t);
+            setSaved(false); // editing again re-enables saving
+          }}
+          placeholder="VD: Phòng Kỹ thuật Hình sự"
+          placeholderTextColor={colors.textMuted}
+        />
+        <TouchableOpacity
+          style={[styles.saveBtn, saved && styles.saveBtnDone]}
+          onPress={save}
+          disabled={saving || saved}
+          activeOpacity={0.85}
+        >
+          <Text style={[styles.saveText, saved && styles.saveTextDone]}>
+            {saving
+              ? 'Đang lưu…'
+              : saved
+              ? 'Tài khoản đang chờ phê duyệt…'
+              : 'Lưu thông tin'}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={signOut} style={styles.signOut}>
+          <Text style={styles.signOutText}>Đăng xuất</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 const styles = StyleSheet.create({
-  container: {
+  flex: {
     flex: 1,
+    backgroundColor: colors.bg,
+  },
+  container: {
+    flexGrow: 1,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: colors.bg,

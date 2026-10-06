@@ -42,6 +42,21 @@ import { DUTY_MAX_FILE_BYTES } from '../config/constants';
 
 const MIME_DOCX =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const MIME_PDF = 'application/pdf';
+
+/**
+ * Loại tệp văn bản theo kiểu MIME: 'docx' (Word .doc/.docx) hoặc 'pdf'.
+ * `fileType` lưu trong duty_schedules nhận đúng các giá trị này (cùng 'image').
+ */
+function documentKindOf(type) {
+  if (type === MIME_PDF) {
+    return 'pdf';
+  }
+  if (type === MIME_DOCX || type === 'application/msword') {
+    return 'docx';
+  }
+  return null;
+}
 
 function scheduleRef(force) {
   return doc(db, 'duty_schedules', force);
@@ -110,14 +125,14 @@ export async function pickScheduleImage() {
 }
 
 /**
- * Mở trình chọn tệp, giới hạn ở .doc/.docx.
+ * Mở trình chọn tệp, giới hạn ở Word (.doc/.docx) và PDF.
  * Trả về tệp đã chuẩn hoá, hoặc null nếu người dùng bấm huỷ.
  */
 export async function pickScheduleDocx() {
   try {
     const [picked] = await pick({
       mode: 'import',
-      type: [types.docx, types.doc],
+      type: [types.docx, types.doc, types.pdf],
     });
     const name = picked.name ?? 'lich-truc.docx';
     // Android trả về `content://` (và có thể là tệp ảo trên Drive), nên phải
@@ -129,12 +144,14 @@ export async function pickScheduleDocx() {
     if (copy.status !== 'success') {
       throw new Error(copy.copyError || 'Không đọc được tệp đã chọn.');
     }
+    const type =
+      picked.type ?? (/.pdf$/i.test(name) ? MIME_PDF : MIME_DOCX);
     return {
       uri: copy.localUri,
       name,
-      type: picked.type ?? MIME_DOCX,
+      type,
       size: picked.size ?? null,
-      kind: 'docx',
+      kind: documentKindOf(type) ?? 'docx',
     };
   } catch (e) {
     if (isErrorWithCode(e) && e.code === errorCodes.OPERATION_CANCELED) {
@@ -142,6 +159,51 @@ export async function pickScheduleDocx() {
     }
     throw e;
   }
+}
+
+const MIME_BY_EXTENSION = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  heic: 'image/heic',
+  heif: 'image/heif',
+  doc: 'application/msword',
+  docx: MIME_DOCX,
+  pdf: MIME_PDF,
+};
+
+/**
+ * Chuyển tệp chia sẻ từ Zalo (xem specs/NativeSharedFile) sang đúng dạng mà
+ * hai hàm pick* ở trên trả về, để bảng đăng dùng chung một đường.
+ *
+ * Tệp tải từ Zalo rất hay mang kiểu application/octet-stream vì Zalo không
+ * đoán được kiểu từ đuôi tên — mà storage.rules chỉ nhận ảnh, Word và PDF
+ * theo contentType — nên đoán lại theo đuôi tệp. Ném lỗi nếu là loại khác
+ * (Excel...).
+ */
+export function sharedFileToUpload(file) {
+  const name = file.name || 'lich-truc';
+  const ext = name.split('.').pop().toLowerCase();
+  const declared =
+    file.mimeType && file.mimeType !== 'application/octet-stream'
+      ? file.mimeType
+      : '';
+  const type = MIME_BY_EXTENSION[ext] ?? declared;
+  const kind = type.startsWith('image/') ? 'image' : documentKindOf(type);
+  if (!kind) {
+    throw new Error(
+      `Tệp "${name}" không phải ảnh, Word hay PDF nên không đăng làm lịch trực được.`,
+    );
+  }
+  return {
+    uri: `file://${file.path}`,
+    name,
+    type,
+    size: file.size || null,
+    kind,
+  };
 }
 
 /**
@@ -188,14 +250,14 @@ export async function uploadDutySchedule({ force, user, file, note = '' }) {
 }
 
 /**
- * Mở tệp Word bằng trình xem tài liệu có sẵn của hệ điều hành.
+ * Mở tệp Word / PDF bằng trình xem tài liệu có sẵn của hệ điều hành.
  *
- * React Native không hiển thị được .docx trong app, nên phải tải tệp về thư
- * mục cache rồi nhờ hệ điều hành mở: iOS dùng QuickLook (đọc .docx sẵn, không
- * cần cài Word), Android bắn intent cho ứng dụng đọc văn bản trên máy.
+ * React Native không hiển thị được .docx hay .pdf trong app, nên phải tải tệp về thư
+ * mục cache rồi nhờ hệ điều hành mở: iOS dùng QuickLook (đọc sẵn .docx và
+ * .pdf, không cần cài Word), Android bắn intent cho ứng dụng đọc văn bản.
  *
  * Luôn tải lại chứ không dùng bản cache cũ — lịch trực có thể vừa bị thay thế.
- * Ném lỗi nếu máy không có ứng dụng nào mở được .docx (chỉ xảy ra trên
+ * Ném lỗi nếu máy không có ứng dụng nào mở được tệp (chỉ xảy ra trên
  * Android); màn hình gọi hàm này sẽ đề nghị mở bằng trình duyệt thay thế.
  */
 export async function openScheduleDocument(schedule) {

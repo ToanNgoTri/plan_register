@@ -11,6 +11,7 @@ import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
 import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
+import com.planregister.sharedfile.SharedFilePackage
 import com.planregister.speech.SpeechRecognizerPackage
 
 class MainApplication : Application(), ReactApplication {
@@ -24,6 +25,8 @@ class MainApplication : Application(), ReactApplication {
           // add(MyReactNativePackage())
           // Module đọc chính tả sống trong chính app này nên không autolink được.
           add(SpeechRecognizerPackage())
+          // Module nhận tệp chia sẻ từ Zalo cũng nằm trong app, phải thêm tay.
+          add(SharedFilePackage())
         },
     )
   }
