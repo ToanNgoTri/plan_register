@@ -13,6 +13,7 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAuth } from '../context/AuthContext';
 import DailyStatusTable from '../components/DailyStatusTable';
+import TaskHistory from '../components/TaskHistory';
 import PositionSelect from '../components/PositionSelect';
 import {
   subscribeDailyStatus,
@@ -89,11 +90,54 @@ const ALL_PEOPLE = '__ALL__';
  * Boss: browse any day's full staff table (with red for missing).
  * Staff: their own registration history, newest first.
  */
-export default function HistoryScreen() {
+export default function HistoryScreen({ route }) {
   const { isBoss, isDev } = useAuth();
-  // `dev` (review/demo) gets the full history table so App Review can see the
-  // whole feature, not just its own entries.
-  return isBoss || isDev ? <BossHistory /> : <StaffHistory />;
+  // Hai mục con: lịch sử đăng ký kế hoạch, và lịch sử giao / nhận nhiệm vụ.
+  const [view, setView] = useState('plans');
+  const [highlightId, setHighlightId] = useState(null);
+  // Mở từ màn Nhiệm vụ / thông báo của một nhiệm vụ đã duyệt.
+  const reqView = route?.params?.view;
+  const reqHighlight = route?.params?.highlightId;
+  useEffect(() => {
+    if (reqView) {
+      setView(reqView);
+      setHighlightId(reqHighlight ?? null);
+    }
+  }, [reqView, reqHighlight]);
+  return (
+    <View style={styles.flex}>
+      <View style={styles.viewSeg}>
+        {[
+          { id: 'plans', label: '📝 Kế hoạch' },
+          { id: 'tasks', label: '📋 Nhiệm vụ' },
+        ].map(v => (
+          <TouchableOpacity
+            key={v.id}
+            style={[styles.viewSegBtn, view === v.id && styles.viewSegOn]}
+            onPress={() => setView(v.id)}
+          >
+            <Text
+              style={[
+                styles.viewSegText,
+                view === v.id && styles.viewSegTextOn,
+              ]}
+            >
+              {v.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+      {view === 'tasks' ? (
+        <TaskHistory highlightId={highlightId} />
+      ) : isBoss || isDev ? (
+        // `dev` (review/demo) gets the full history table so App Review can
+        // see the whole feature, not just its own entries.
+        <BossHistory />
+      ) : (
+        <StaffHistory />
+      )}
+    </View>
+  );
 }
 function BossHistory() {
   const [date, setDate] = useState(new Date());
@@ -272,6 +316,20 @@ function StaffHistory() {
   );
 }
 const styles = StyleSheet.create({
+  viewSeg: {
+    flexDirection: 'row',
+    margin: spacing.md,
+    marginBottom: 0,
+    backgroundColor: colors.card,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    overflow: 'hidden',
+  },
+  viewSegBtn: { flex: 1, paddingVertical: 10, alignItems: 'center' },
+  viewSegOn: { backgroundColor: colors.primary },
+  viewSegText: { color: colors.text, fontWeight: '600' },
+  viewSegTextOn: { color: '#fff' },
   flex: {
     flex: 1,
     backgroundColor: colors.bg,

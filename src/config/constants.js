@@ -143,3 +143,16 @@ export const DEFAULT_ISSUING_UNITS = [
   'Tổ Trật tự',
   'Tổ Tổng hợp',
 ];
+
+/**
+ * Phó Trưởng CA: chỉ huy cấp phó — được giao nhiệm vụ cho cán bộ (Trưởng CA
+ * giao được cho cả Phó lẫn cán bộ). Giữ chuỗi khớp firestore.rules.
+ */
+export const DEPUTY_POSITION = 'Phó Trưởng CA';
+
+/**
+ * Kênh Android riêng cho thông báo nhiệm vụ: có ÂM THANH + rung. Phải là kênh
+ * mới vì Android không cho đổi âm thanh của một kênh đã tạo. Cloud Function
+ * gửi FCM cũng dùng đúng id này (functions/index.js).
+ */
+export const TASK_CHANNEL_ID = 'task-alerts';

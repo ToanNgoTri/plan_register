@@ -32,6 +32,22 @@ service cloud.firestore {
         && myProfile().approved == true
         && myProfile().active == true;
     }
+    // Phó Trưởng CA: chỉ huy cấp phó — được giao nhiệm vụ, nhưng KHÔNG có quyền
+    // quản lý tài khoản như Trưởng CA. Giữ chuỗi khớp DEPUTY_POSITION trong app.
+    function isDeputy() {
+      return isApprovedStaff()
+        && myProfile().get('position', '') == 'Phó Trưởng CA';
+    }
+    // Chỉ huy giao nhiệm vụ cho cấp dưới: Trưởng CA (role boss hoặc chức vụ) và
+    // Phó Trưởng CA đã duyệt. Tính theo CHỨC VỤ — tài khoản dev mang chức vụ
+    // "Cán bộ" là cán bộ, không phải chỉ huy.
+    function isCommander() {
+      return isBoss()
+        || (isSignedIn()
+            && myProfile().get('position', '') == 'Phó Trưởng CA'
+            && myProfile().approved == true
+            && myProfile().get('active', true) == true);
+    }
     // May write their own plan entries (approved staff, or a dev account).
     function canRegister() {
       return isApprovedStaff() || isDev();
@@ -103,9 +119,11 @@ service cloud.firestore {
       // Any signed-in user may also read a "Trưởng CA" profile — used to detect
       // whether a Trưởng CA already exists (so the option can be hidden). This
       // only exposes the commander's profile, which is not sensitive here.
+      // Phó Trưởng CA cũng đọc được hồ sơ để chọn người nhận nhiệm vụ.
       allow read: if isSignedIn()
         && (request.auth.uid == uid
             || isManager()
+            || isDeputy()
             || resource.data.get('position', '') == 'Trưởng CA');
 
       // New users create their own profile, but cannot self-approve or make
@@ -248,6 +266,108 @@ service cloud.firestore {
       allow delete: if isManager()
         || (canUseDocNumbers()
             && (resource.data.uid == request.auth.uid || lockExpired()));
+    }
+
+    // ---- nhiệm vụ: tasks/{taskId} ----
+    // Chỉ HAI người thấy một nhiệm vụ: người giao (assignerUid) và người nhận
+    // (assigneeUid) — kể cả Trưởng CA cũng không xem được nhiệm vụ do Phó giao
+    // cho người khác. Vì vậy app phải truy vấn theo đúng một trong hai trường
+    // đó (where assigneeUid == me / where assignerUid == me).
+    //
+    // Vòng đời:  pending ──(người nhận: Hoàn thành)──▶ submitted
+    //            pending ──(người nhận: Hoãn, chọn hạn mới ở tương lai)──▶ pending
+    //            submitted ──(người giao: Duyệt)──▶ approved
+    //            submitted ──(người giao: Từ chối + lý do + hạn mới)──▶ pending
+    match /tasks/{taskId} {
+      function isTaskAssigner() {
+        return isSignedIn() && resource.data.assignerUid == request.auth.uid;
+      }
+      function isTaskAssignee() {
+        return isSignedIn() && resource.data.assigneeUid == request.auth.uid;
+      }
+      function taskChanged() {
+        return request.resource.data.diff(resource.data).affectedKeys();
+      }
+      // Cấp chỉ huy: 3 = Trưởng CA (role boss / chức vụ), 2 = Phó Trưởng CA,
+      // 1 = cán bộ (kể cả tài khoản dev chức vụ Cán bộ).
+      // Giữ khớp commandRank() trong services/taskService.js.
+      function commandRank(p) {
+        return (p.get('role', '') == 'boss'
+                || p.get('position', '') == 'Trưởng CA') ? 3
+          : (p.get('position', '') == 'Phó Trưởng CA' ? 2 : 1);
+      }
+      // Nhiệm vụ TỰ GIAO: người giao cũng là người nhận (nhắc việc cá nhân).
+      function isSelfTask() {
+        return isSignedIn()
+          && resource.data.assignerUid == request.auth.uid
+          && resource.data.assigneeUid == request.auth.uid;
+      }
+      function futureDue() {
+        return request.resource.data.dueAt is int
+          && request.resource.data.dueAt > request.time.toMillis();
+      }
+
+      allow read: if isSignedIn()
+        && (resource.data.assignerUid == request.auth.uid
+            || resource.data.assigneeUid == request.auth.uid);
+
+      // Chỉ chỉ huy được giao; người giao luôn là chính người gọi, không tự
+      // giao cho mình, và hạn phải ở tương lai.
+      // Hai cách tạo:
+      //  - TỰ GIAO cho bản thân: ai dùng được app cũng tạo được.
+      //  - Chỉ huy giao XUỐNG cấp dưới: Trưởng → Phó / cán bộ, Phó → cán bộ.
+      allow create: if request.resource.data.assignerUid == request.auth.uid
+        && request.resource.data.assigneeUid is string
+        && ((request.resource.data.assigneeUid == request.auth.uid
+              && (isApprovedStaff() || isManager()))
+            || (isCommander()
+              && request.resource.data.assigneeUid != request.auth.uid
+              && commandRank(get(/databases/$(database)/documents/users/$(
+                   request.resource.data.assigneeUid)).data)
+                 < commandRank(myProfile())))
+        && request.resource.data.status == 'pending'
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 300
+        && futureDue();
+
+      allow update: if
+        // Tự giao: bấm "Hoàn thành" là xong luôn, không cần ai duyệt.
+        (isSelfTask()
+          && resource.data.status == 'pending'
+          && request.resource.data.status == 'approved'
+          && taskChanged().hasOnly(['status', 'updatedAt', 'submittedAt',
+               'approvedAt', 'log']))
+        ||
+        // Người nhận: báo hoàn thành (giữ nguyên hạn) hoặc hoãn sang hạn muộn hơn.
+        (isTaskAssignee()
+          && resource.data.status == 'pending'
+          && taskChanged().hasOnly(['status', 'dueAt', 'updatedAt',
+               'submittedAt', 'postponeCount', 'lastPostponeReason', 'log'])
+          && ((request.resource.data.status == 'submitted'
+                && request.resource.data.dueAt == resource.data.dueAt)
+              // Hoãn: hạn mới chỉ cần ở tương lai (được chỉnh lại sớm hơn hạn
+              // cũ — trước đây bắt buộc muộn hơn nên bị permission-denied).
+              || (request.resource.data.status == 'pending'
+                && futureDue())))
+        ||
+        // Người giao: duyệt / từ chối (bắt buộc lý do + hạn mới) / sửa nội dung.
+        // Không đổi được người nhận hay người giao.
+        (isTaskAssigner()
+          && taskChanged().hasOnly(['title', 'content', 'status', 'dueAt',
+               'updatedAt', 'approvedAt', 'rejectReason', 'rejectCount', 'log'])
+          && ((resource.data.status == 'submitted'
+                && request.resource.data.status == 'approved')
+              || (resource.data.status == 'submitted'
+                && request.resource.data.status == 'pending'
+                && request.resource.data.rejectReason is string
+                && request.resource.data.rejectReason.size() > 0
+                && futureDue())
+              || (resource.data.status == 'pending'
+                && request.resource.data.status == 'pending'
+                && request.resource.data.dueAt is int)));
+
+      allow delete: if isTaskAssigner();
     }
 
     // ---- plan history: history/{year}/months/{month}/days/{day}/entries/{uid}

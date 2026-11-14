@@ -1,0 +1,2 @@
+# eslint (google config) bắt buộc LF — không để Git đổi sang CRLF trên Windows.
+*.js text eol=lf

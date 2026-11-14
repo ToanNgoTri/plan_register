@@ -12,6 +12,7 @@ import {
   REMINDER_MINUTE,
 } from '../config/constants';
 import { isWeekend, toDateKey } from '../utils/date';
+import { setupTaskNotifications } from './taskNotificationService';
 const REMINDER_ID_PREFIX = 'reminder-';
 
 /** Ask for notification permission and create the Android channel. */
@@ -22,6 +23,7 @@ export async function setupNotifications() {
     name: 'Nhắc đăng ký kế hoạch',
     importance: AndroidImportance.HIGH,
   });
+  await setupTaskNotifications().catch(() => {});
   return (
     settings.authorizationStatus === AuthorizationStatus.AUTHORIZED ||
     settings.authorizationStatus === AuthorizationStatus.PROVISIONAL

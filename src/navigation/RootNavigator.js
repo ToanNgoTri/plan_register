@@ -15,6 +15,9 @@ import ManageUsersScreen from '../screens/ManageUsersScreen';
 import InactiveScreen from '../screens/InactiveScreen';
 import ProfileErrorScreen from '../screens/ProfileErrorScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import TasksScreen from '../screens/TasksScreen';
+import TaskReminderSync from '../components/TaskReminderSync';
+import { useTaskBadge } from '../hooks/useTasks';
 import BossAlertListener from '../components/BossAlertListener';
 import IncomingDutyFileListener from '../components/IncomingDutyFileListener';
 import SplashScreen from '../components/SplashScreen';
@@ -64,6 +67,7 @@ const screenOptions = {
   tabBarActiveTintColor: colors.primary,
 };
 function BossTabs() {
+  const taskBadge = useTaskBadge();
   return (
     <>
       <BossAlertListener />
@@ -74,6 +78,15 @@ function BossTabs() {
           options={{
             title: 'Tổng quan',
             tabBarIcon: tabIcon('📊'),
+          }}
+        />
+        <Tab.Screen
+          name="Tasks"
+          component={TasksScreen}
+          options={{
+            title: 'Nhiệm vụ',
+            tabBarIcon: tabIcon('📋'),
+            tabBarBadge: taskBadge,
           }}
         />
         <Tab.Screen
@@ -121,6 +134,7 @@ function BossTabs() {
   );
 }
 function StaffTabs() {
+  const taskBadge = useTaskBadge();
   return (
     <Tab.Navigator screenOptions={screenOptions}>
       <Tab.Screen
@@ -129,6 +143,15 @@ function StaffTabs() {
         options={{
           title: 'Đăng ký',
           tabBarIcon: tabIcon('📝'),
+        }}
+      />
+      <Tab.Screen
+        name="Tasks"
+        component={TasksScreen}
+        options={{
+          title: 'Nhiệm vụ',
+          tabBarIcon: tabIcon('📋'),
+          tabBarBadge: taskBadge,
         }}
       />
       <Tab.Screen
@@ -171,6 +194,7 @@ function StaffTabs() {
 // user-management/approval screen. Lets an App Review account exercise every
 // feature from one login.
 function DevTabs() {
+  const taskBadge = useTaskBadge();
   return (
     <>
       <BossAlertListener />
@@ -181,6 +205,15 @@ function DevTabs() {
           options={{
             title: 'Đăng ký',
             tabBarIcon: tabIcon('📝'),
+          }}
+        />
+        <Tab.Screen
+          name="Tasks"
+          component={TasksScreen}
+          options={{
+            title: 'Nhiệm vụ',
+            tabBarIcon: tabIcon('📋'),
+            tabBarBadge: taskBadge,
           }}
         />
         <Tab.Screen
@@ -296,6 +329,8 @@ export default function RootNavigator() {
       <>
         {/* Tệp "chuyển lịch" chia sẻ từ Zalo chỉ được nhận khi đã vào app. */}
         <IncomingDutyFileListener />
+        {/* Nhiệm vụ: đồng bộ chuông đến hạn + mở từ thông báo, mọi vai trò. */}
+        <TaskReminderSync />
         {isBoss ? <BossTabs /> : isDev ? <DevTabs /> : <StaffTabs />}
       </>
     );

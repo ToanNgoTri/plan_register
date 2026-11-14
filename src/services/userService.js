@@ -10,7 +10,8 @@ import {
   updateDoc,
   where,
 } from '@react-native-firebase/firestore';
-import { db } from './firebase';
+import { deleteToken } from '@react-native-firebase/messaging';
+import { db, messaging } from './firebase';
 import { BOSS_POSITION } from '../config/constants';
 const usersCol = () => collection(db, 'users');
 
@@ -137,10 +138,25 @@ export async function setUserPosition(uid, position, currentRole) {
 export function displayNameOf(u) {
   return u.fullName && u.fullName.trim() ? u.fullName.trim() : u.displayName;
 }
+/**
+ * Lưu token FCM của máy này kèm thời điểm. `fcmTokenAt` cho Cloud Function biết
+ * ai là người đăng nhập GẦN NHẤT trên máy khi nhiều tài khoản từng dùng chung
+ * một máy (cùng một token) — chỉ người đó mới được nhận thông báo.
+ */
 export async function updateFcmToken(uid, token) {
   await updateDoc(userDoc(uid), {
     fcmToken: token,
+    fcmTokenAt: Date.now(),
   });
+}
+
+/**
+ * Đăng xuất: xoá token khỏi hồ sơ VÀ huỷ token trên máy, để tài khoản đăng nhập
+ * sau trên cùng máy nhận một token mới, không trùng với tài khoản cũ.
+ */
+export async function clearFcmToken(uid) {
+  await updateDoc(userDoc(uid), { fcmToken: null, fcmTokenAt: Date.now() });
+  await deleteToken(messaging).catch(() => {});
 }
 
 /**

@@ -10,6 +10,7 @@ import React, {
 import { onAuthStateChanged } from '@react-native-firebase/auth';
 import { auth } from '../services/firebase';
 import {
+  clearFcmToken,
   ensureUserProfile,
   subscribeToProfile,
   updateFcmToken,
@@ -27,6 +28,7 @@ import {
   scheduleWeekdayReminders,
   setupNotifications,
 } from '../services/notificationService';
+import { cancelTaskReminders } from '../services/taskNotificationService';
 import { useTodayKey } from '../hooks/useToday';
 import { BOSS_POSITION } from '../config/constants';
 const AuthContext = createContext(undefined);
@@ -90,6 +92,7 @@ export function AuthProvider({ children }) {
         setProfileError(null);
         setInitializing(false);
         cancelAllReminders().catch(() => {});
+        cancelTaskReminders().catch(() => {});
         return;
       }
       loadProfile(user);
@@ -125,7 +128,9 @@ export function AuthProvider({ children }) {
     // Persist FCM token (best effort, for future server-side push).
     getFcmToken()
       .then(token => {
-        if (token && token !== profile.fcmToken) {
+        // Ghi lại cả khi token không đổi nhưng chưa có mốc thời gian (hồ sơ
+        // cũ) — Cloud Function dựa vào fcmTokenAt để biết ai đang dùng máy.
+        if (token && (token !== profile.fcmToken || !profile.fcmTokenAt)) {
           updateFcmToken(profile.uid, token).catch(() => {});
         }
       })
@@ -162,6 +167,13 @@ export function AuthProvider({ children }) {
   }, []);
   const signOut = useCallback(async () => {
     await cancelAllReminders().catch(() => {});
+    await cancelTaskReminders().catch(() => {});
+    // Gỡ máy này khỏi hồ sơ trước khi đăng xuất, để người đăng nhập sau trên
+    // cùng máy không nhận nhầm thông báo của tài khoản này.
+    const uid = auth.currentUser?.uid;
+    if (uid) {
+      await clearFcmToken(uid).catch(() => {});
+    }
     await doSignOut();
   }, []);
   const value = useMemo(

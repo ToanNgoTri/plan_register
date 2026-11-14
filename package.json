@@ -9,7 +9,8 @@
     "start": "react-native start",
     "test": "jest",
     "test:rules": "firebase emulators:exec --only firestore --project demo-planregister \"node scripts/rules.test.mjs\"",
-    "test:flow": "firebase emulators:exec --only firestore --project demo-planregister \"node scripts/docNumberFlow.test.mjs\""
+    "test:flow": "firebase emulators:exec --only firestore --project demo-planregister \"node scripts/docNumberFlow.test.mjs\"",
+    "test:tasks": "firebase emulators:exec --only firestore --project demo-planregister \"node scripts/tasks.rules.test.mjs\""
   },
   "dependencies": {
     "@invertase/react-native-apple-authentication": "^2.5.1",

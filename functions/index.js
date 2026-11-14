@@ -13,6 +13,9 @@
  *     it as an UPDATE, which onDocumentCreated would miss.
  *  2. deleteUserAccount — callable (boss only): fully delete a user's Auth
  *     account + profile doc.
+ *  3. onTaskWritten — nhiệm vụ: báo cho BÊN CÒN LẠI mỗi khi có sự kiện (giao
+ *     mới, sửa, báo hoàn thành, hoãn, duyệt, từ chối, huỷ). Chuông "đến hạn"
+ *     thì hẹn cục bộ trên máy (notifee), không phải ở đây.
  *
  * Deploy:  cd functions && npm install && npm run deploy
  */
@@ -103,4 +106,143 @@ exports.deleteUserAccount = onCall(async (request) => {
     logger.warn(`Auth user ${targetUid} not deleted: ${e.message}`);
   }
   return {ok: true};
+});
+
+// 3) Nhiệm vụ: đẩy thông báo sự kiện cho bên còn lại.
+const TASK_CHANNEL_ID = "task-alerts";
+
+/**
+ * "16/07/2026 14:30" theo giờ Việt Nam.
+ * @param {number} ms Thời điểm (ms).
+ * @return {string} Chuỗi ngày giờ.
+ */
+function fmtVN(ms) {
+  const d = new Date(ms + 7 * 3600 * 1000);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/` +
+    `${d.getUTCFullYear()} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
+}
+
+/**
+ * Gửi thông báo nhiệm vụ tới một người (theo fcmToken trên hồ sơ).
+ *
+ * Nhiều tài khoản từng đăng nhập trên CÙNG một máy sẽ cùng giữ một token, nên
+ * gửi theo token của người nhận có thể đổ chuông ở máy đang do người khác
+ * (thường chính là người vừa thao tác) sử dụng. Vì vậy bỏ qua khi:
+ *  - token đó cũng là token của người vừa thao tác (`actorUid`), hoặc
+ *  - có tài khoản khác giữ cùng token với `fcmTokenAt` mới hơn
+ *    (người đăng nhập gần nhất mới là người đang dùng máy).
+ * @param {string} uid Người nhận thông báo.
+ * @param {string} actorUid Người vừa thao tác (không bao giờ tự báo mình).
+ * @param {string} taskId Id nhiệm vụ (để app mở đúng nhiệm vụ).
+ * @param {{title: string, body: string}} notification Nội dung.
+ * @return {Promise<void>}
+ */
+async function notifyTaskUser(uid, actorUid, taskId, notification) {
+  if (!uid || uid === actorUid) {
+    return;
+  }
+  const users = db.collection("users");
+  const snap = await users.doc(uid).get();
+  const me = snap.exists ? snap.data() : null;
+  const token = me ? me.fcmToken : null;
+  if (!token) {
+    return;
+  }
+  const holders = await users.where("fcmToken", "==", token).get();
+  const myAt = me.fcmTokenAt || 0;
+  const stale = holders.docs.some((d) => d.id !== uid &&
+    (d.id === actorUid || (d.data().fcmTokenAt || 0) > myAt));
+  if (stale) {
+    logger.info(`Task FCM to ${uid} skipped: token now used by another user`);
+    return;
+  }
+  try {
+    await admin.messaging().send({
+      token,
+      notification,
+      data: {kind: "task", taskId, toUid: uid},
+      android: {
+        priority: "high",
+        notification: {channelId: TASK_CHANNEL_ID, sound: "default"},
+      },
+      apns: {payload: {aps: {"sound": "default", "content-available": 1}}},
+    });
+  } catch (e) {
+    logger.warn(`Task FCM to ${uid} failed: ${e.message}`);
+  }
+}
+
+exports.onTaskWritten = onDocumentWritten("tasks/{taskId}", async (event) => {
+  const taskId = event.params.taskId;
+  const before = event.data.before.exists ? event.data.before.data() : null;
+  const after = event.data.after.exists ? event.data.after.data() : null;
+
+  if (!after) {
+    if (before && before.status !== "approved") {
+      await notifyTaskUser(before.assigneeUid, before.assignerUid, taskId, {
+        title: "Nhiệm vụ đã bị huỷ",
+        body: `${before.assignerName} đã huỷ: ${before.title}`,
+      });
+    }
+    return;
+  }
+  const due = `Hạn ${fmtVN(after.dueAt)}`;
+  if (!before) {
+    await notifyTaskUser(after.assigneeUid, after.assignerUid, taskId, {
+      title: `📋 Nhiệm vụ mới từ ${after.assignerName}`,
+      body: `${after.title}
+${due}`,
+    });
+    return;
+  }
+
+  const beforeLog = Array.isArray(before.log) ? before.log.length : 0;
+  const log = Array.isArray(after.log) ? after.log : [];
+  if (log.length <= beforeLog) {
+    return; // không có sự kiện mới
+  }
+  const last = log[log.length - 1];
+  // Người nhận thao tác → báo người giao; người giao thao tác → báo người nhận.
+  const actor = last.byUid;
+  const note = last.note ? `
+“${last.note}”` : "";
+  switch (last.type) {
+    case "submitted":
+      await notifyTaskUser(after.assignerUid, actor, taskId, {
+        title: `✅ ${after.assigneeName} báo hoàn thành`,
+        body: `${after.title}
+Vào app để duyệt hoặc từ chối.`,
+      });
+      break;
+    case "postponed":
+      await notifyTaskUser(after.assignerUid, actor, taskId, {
+        title: `⏸ ${after.assigneeName} xin hoãn`,
+        body: `${after.title}
+${due}${note}`,
+      });
+      break;
+    case "approved":
+      await notifyTaskUser(after.assigneeUid, actor, taskId, {
+        title: "🎉 Nhiệm vụ đã được duyệt",
+        body: after.title,
+      });
+      break;
+    case "rejected":
+      await notifyTaskUser(after.assigneeUid, actor, taskId, {
+        title: `✖ Bị từ chối: ${after.title}`,
+        body: `${after.rejectReason || ""}
+${due}`,
+      });
+      break;
+    case "edited":
+      await notifyTaskUser(after.assigneeUid, actor, taskId, {
+        title: "📝 Nhiệm vụ được cập nhật",
+        body: `${after.title}
+${due}`,
+      });
+      break;
+    default:
+      break;
+  }
 });
