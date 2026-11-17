@@ -16,22 +16,30 @@ import {
 import ImageCropPicker from 'react-native-image-crop-picker';
 import { useAuth } from '../context/AuthContext';
 import {
+  changeUnit,
   deleteOwnAccount,
   displayNameOf,
-  subscribeChiefExists,
+  subscribeChiefRequests,
+  subscribeToUsers,
+  subscribeUnitAdmin,
+  subscribeUnitChief,
   updateProfileInfo,
 } from '../services/userService';
 import { clearAvatar, getAvatar, setAvatar } from '../services/avatarStore';
 import PositionSelect from '../components/PositionSelect';
-import { BOSS_POSITION, POSITIONS } from '../config/constants';
+import UnitSelect from '../components/UnitSelect';
+import { ADMIN_POSITION, BOSS_POSITION, POSITIONS } from '../config/constants';
+import { unitName } from '../config/units';
 import { colors, spacing } from '../theme';
 
 /**
  * Settings tab: avatar (stored locally on device), họ tên, and account actions
  * — edit profile info (which also contains delete-account) and sign out.
  */
-export default function SettingsScreen() {
-  const { profile, signOut } = useAuth();
+export default function SettingsScreen({ navigation }) {
+  const { profile, signOut, isBoss, isDev, isAdmin } = useAuth();
+  const canManage = isBoss || isDev || isAdmin;
+  const pendingCount = usePendingCount(canManage, isDev);
   const [avatar, setAvatarState] = useState(null);
   const [editing, setEditing] = useState(false);
 
@@ -136,7 +144,9 @@ export default function SettingsScreen() {
       {profile?.position ? (
         <Text style={styles.sub}>{profile.position}</Text>
       ) : null}
-      {profile?.unit ? <Text style={styles.sub}>{profile.unit}</Text> : null}
+      {profile?.unitId ? (
+        <Text style={styles.sub}>{unitName(profile.unitId)}</Text>
+      ) : null}
       <Text style={styles.email}>{profile?.email}</Text>
 
       <View style={styles.actions}>
@@ -147,6 +157,19 @@ export default function SettingsScreen() {
         >
           <Text style={styles.btnText}>Chỉnh sửa thông tin</Text>
         </TouchableOpacity>
+
+        {canManage ? (
+          <TouchableOpacity
+            style={[styles.btn, styles.btnManage]}
+            activeOpacity={0.85}
+            onPress={() => navigation.navigate('ManageUsers')}
+          >
+            <Text style={styles.btnText}>
+              👥 Phê duyệt người dùng
+              {pendingCount ? `  (${pendingCount})` : ''}
+            </Text>
+          </TouchableOpacity>
+        ) : null}
 
         <TouchableOpacity
           style={[styles.btn, styles.btnOutline]}
@@ -167,27 +190,73 @@ export default function SettingsScreen() {
   );
 }
 
+/**
+ * Số tài khoản đang chờ duyệt (đơn vị mình; dev cộng thêm yêu cầu Trưởng CA
+ * mọi đơn vị) — hiện trên nút "Phê duyệt người dùng".
+ */
+function usePendingCount(enabled, isDev) {
+  const [unitPending, setUnitPending] = useState([]);
+  const [chiefReqs, setChiefReqs] = useState([]);
+  useEffect(() => {
+    if (!enabled) {
+      setUnitPending([]);
+      return undefined;
+    }
+    return subscribeToUsers(
+      us => setUnitPending(us.filter(u => !u.approved)),
+      () => {},
+    );
+  }, [enabled]);
+  useEffect(() => {
+    if (!enabled || !isDev) {
+      setChiefReqs([]);
+      return undefined;
+    }
+    return subscribeChiefRequests(setChiefReqs, () => {});
+  }, [enabled, isDev]);
+  const ids = new Set(unitPending.map(u => u.uid));
+  chiefReqs.forEach(u => ids.add(u.uid));
+  return ids.size;
+}
+
 /** Modal form: edit họ tên / chức vụ / đơn vị, plus a delete-account action. */
 function EditProfileModal({ visible, profile, onClose, onDeleted }) {
   const [fullName, setFullName] = useState('');
   const [position, setPosition] = useState('');
-  const [unit, setUnit] = useState('');
+  const [unitId, setUnitId] = useState('');
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  // Hide "Trưởng CA" if one already exists (unless this user IS that Trưởng CA).
-  const [chiefExists, setChiefExists] = useState(false);
-  useEffect(() => subscribeChiefExists(setChiefExists, () => {}), []);
-  const positionOptions =
-    chiefExists && position !== BOSS_POSITION
-      ? POSITIONS.filter(p => p !== BOSS_POSITION)
-      : POSITIONS;
+  // Hide "Trưởng CA" if the unit already has one (unless this user IS that
+  // Trưởng CA).
+  const [chiefUid, setChiefUid] = useState(null);
+  useEffect(
+    () => subscribeUnitChief(profile?.unitId, setChiefUid, () => {}),
+    [profile?.unitId],
+  );
+  const [adminUid, setAdminUid] = useState(null);
+  useEffect(
+    () => subscribeUnitAdmin(profile?.unitId, setAdminUid, () => {}),
+    [profile?.unitId],
+  );
+  const chiefExists = !!chiefUid && chiefUid !== profile?.uid;
+  const adminExists = !!adminUid && adminUid !== profile?.uid;
+  const isDevAcc = profile?.role === 'dev';
+  // dev (quản trị tổng) không giữ chức Trưởng CA / admin của đơn vị nào.
+  const positionOptions = POSITIONS.filter(
+    p =>
+      p === position ||
+      !(
+        (p === BOSS_POSITION && (chiefExists || isDevAcc)) ||
+        (p === ADMIN_POSITION && (adminExists || isDevAcc))
+      ),
+  );
 
   // Seed the form each time it opens with the current profile values.
   useEffect(() => {
     if (visible && profile) {
       setFullName(profile.fullName ?? '');
       setPosition(profile.position ?? '');
-      setUnit(profile.unit ?? '');
+      setUnitId(profile.unitId ?? '');
     }
   }, [visible, profile]);
 
@@ -198,17 +267,38 @@ function EditProfileModal({ visible, profile, onClose, onDeleted }) {
       Alert.alert('Thiếu chức vụ', 'Vui lòng chọn chức vụ.');
       return;
     }
-    if (!unit.trim()) {
-      Alert.alert('Thiếu đơn vị', 'Vui lòng nhập đơn vị.');
+    if (unitId && unitId !== profile.unitId) {
+      confirmChangeUnit();
       return;
     }
+    if (
+      position === BOSS_POSITION &&
+      profile.position !== BOSS_POSITION &&
+      profile.role !== 'dev'
+    ) {
+      Alert.alert(
+        'Xin làm Trưởng CA',
+        `Gửi yêu cầu làm Trưởng CA ${unitName(
+          profile.unitId,
+        )}? Tài khoản sẽ trở về CHỜ DUYỆT cho đến khi Cán bộ (admin) của đơn vị duyệt.`,
+        [
+          { text: 'Huỷ', style: 'cancel' },
+          { text: 'Gửi yêu cầu', onPress: doSave },
+        ],
+      );
+      return;
+    }
+    doSave();
+  };
+
+  const doSave = async () => {
     try {
       setSaving(true);
       await updateProfileInfo(profile.uid, {
         fullName: fullName.trim(),
         position,
-        unit: unit.trim(),
-        currentRole: profile.role,
+        unitId: profile.unitId,
+        previous: profile,
       });
       onClose();
     } catch (e) {
@@ -218,11 +308,50 @@ function EditProfileModal({ visible, profile, onClose, onDeleted }) {
     }
   };
 
+  // Đổi đơn vị: tài khoản về CHỜ DUYỆT — app tự chuyển sang màn chờ duyệt
+  // (RootNavigator) ngay khi hồ sơ cập nhật.
+  const confirmChangeUnit = () =>
+    Alert.alert(
+      'Chuyển đơn vị',
+      profile.role === 'dev'
+        ? `Chuyển sang ${unitName(
+            unitId,
+          )}? Ứng dụng sẽ hiển thị dữ liệu của đơn vị mới.`
+        : `Chuyển sang ${unitName(
+            unitId,
+          )}? Tài khoản sẽ trở về trạng thái CHỜ DUYỆT và chỉ dùng lại được khi Trưởng CA ${unitName(
+            unitId,
+          )} phê duyệt.` +
+            (profile.position === BOSS_POSITION
+              ? ` Bạn sẽ thôi là Trưởng CA của ${unitName(profile.unitId)}.`
+              : ''),
+      [
+        { text: 'Huỷ', style: 'cancel' },
+        { text: 'Chuyển', style: 'destructive', onPress: doChangeUnit },
+      ],
+    );
+
+  const doChangeUnit = async () => {
+    try {
+      setSaving(true);
+      await changeUnit(profile, {
+        unitId,
+        fullName: fullName.trim(),
+        position,
+      });
+      onClose();
+    } catch (e) {
+      Alert.alert('Lỗi', e?.message ?? 'Không chuyển được đơn vị.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const doDelete = async () => {
     try {
       setDeleting(true);
       await clearAvatar(profile.uid);
-      await deleteOwnAccount(profile.uid);
+      await deleteOwnAccount(profile);
       // Access is revoked; sign out to return to the login screen.
       onDeleted?.();
     } catch (e) {
@@ -273,16 +402,14 @@ function EditProfileModal({ visible, profile, onClose, onDeleted }) {
                 onChange={setPosition}
               />
 
-              <Text style={[styles.label, styles.labelSpaced]}>
-                Đơn vị / Phòng ban
-              </Text>
-              <TextInput
-                style={styles.input}
-                value={unit}
-                onChangeText={setUnit}
-                placeholder="VD: Công an phường Hàng Gòn"
-                placeholderTextColor={colors.textMuted}
-              />
+              <Text style={[styles.label, styles.labelSpaced]}>Đơn vị</Text>
+              <UnitSelect value={unitId} onChange={setUnitId} />
+              {unitId !== profile?.unitId && profile?.role !== 'dev' ? (
+                <Text style={styles.unitWarn}>
+                  Đổi đơn vị: tài khoản sẽ chuyển về chờ Trưởng CA đơn vị mới
+                  duyệt.
+                </Text>
+              ) : null}
 
               <TouchableOpacity
                 style={[styles.btn, styles.saveBtn]}
@@ -329,6 +456,11 @@ function EditProfileModal({ visible, profile, onClose, onDeleted }) {
 }
 const AVATAR = 120;
 const styles = StyleSheet.create({
+  unitWarn: {
+    color: colors.warning,
+    fontSize: 13,
+    marginTop: spacing.xs,
+  },
   flex: {
     flex: 1,
     backgroundColor: colors.bg,
@@ -410,6 +542,9 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 15,
   },
+  btnManage: {
+    backgroundColor: colors.success,
+  },
   btnOutline: {
     backgroundColor: 'transparent',
     borderWidth: 1,
@@ -458,6 +593,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     color: colors.text,
     fontSize: 15,
+  },
+  inputReadOnly: {
+    backgroundColor: colors.bg,
+    color: colors.textMuted,
   },
   saveBtn: {
     marginTop: spacing.lg,

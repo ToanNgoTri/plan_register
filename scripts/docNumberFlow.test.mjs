@@ -34,11 +34,11 @@ const QD = { id: 'QD', abbr: 'QĐ', label: 'Quyết định (cá biệt)' };
 const BC = { id: 'BC', abbr: 'BC', label: 'Báo cáo' };
 
 // ---- copy nguyên logic của src/services/docNumberService (web SDK) ----------
-const lockRef = (db, typeId) => doc(db, 'doc_number_locks', typeId);
+const lockRef = (db, typeId) => doc(db, 'units', 'U1', 'doc_number_locks', typeId);
 const counterRef = (db, year, typeId) =>
-  doc(db, 'doc_number_counters', `${year}-${typeId}`);
+  doc(db, 'units', 'U1', 'doc_number_counters', `${year}-${typeId}`);
 const suffixRef = (db, year, typeId, seq) =>
-  doc(db, 'doc_number_suffixes', `${year}-${typeId}-${seq}`);
+  doc(db, 'units', 'U1', 'doc_number_suffixes', `${year}-${typeId}-${seq}`);
 
 function suffixForIndex(n) {
   let s = '';
@@ -96,7 +96,7 @@ async function issue(db, uid, type, year, baseSeq = null) {
     const nextIndex = cSnap.exists() ? cSnap.data().next : 1;
     const seq = isSuffix ? baseSeq : nextIndex;
     const suffix = isSuffix ? suffixForIndex(nextIndex) : '';
-    const entryRef = doc(collection(db, 'doc_numbers'));
+    const entryRef = doc(collection(db, 'units', 'U1', 'doc_numbers'));
     const entry = {
       seq,
       suffix,
@@ -150,6 +150,7 @@ await env.withSecurityRulesDisabled(async ctx => {
       role: 'staff',
       approved: true,
       active: true,
+      unitId: 'U1',
     });
   }
 });
@@ -226,7 +227,7 @@ eq('chữ phụ kế tiếp của cùng số gốc', sfxB.number, '02B/QĐ');
 
 // == 5. Soi lại sổ ===========================================================
 const all = await getDocs(
-  query(collection(A, 'doc_numbers'), where('year', '==', YEAR)),
+  query(collection(A, 'units', 'U1', 'doc_numbers'), where('year', '==', YEAR)),
 );
 const qdOfYear = all.docs
   .map(d => d.data())

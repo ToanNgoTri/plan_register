@@ -66,6 +66,36 @@ const screenOptions = {
   headerTitle: () => <HeaderGreeting />,
   tabBarActiveTintColor: colors.primary,
 };
+// Tab Cài đặt là một stack: màn Cài đặt + "Phê duyệt người dùng" (Trưởng CA /
+// dev mở từ nút trong Cài đặt) — thanh tab gọn hơn, không cần tab riêng.
+const settingsTabOptions = {
+  title: 'Cài đặt',
+  tabBarIcon: tabIcon('⚙️'),
+  headerShown: false,
+};
+const stackScreenOptions = {
+  headerStyle: screenOptions.headerStyle,
+  headerTintColor: screenOptions.headerTintColor,
+  headerTitleAlign: 'left',
+};
+const renderGreeting = () => <HeaderGreeting />;
+const settingsHomeOptions = { headerTitle: renderGreeting };
+function SettingsStack() {
+  return (
+    <Stack.Navigator screenOptions={stackScreenOptions}>
+      <Stack.Screen
+        name="SettingsHome"
+        component={SettingsScreen}
+        options={settingsHomeOptions}
+      />
+      <Stack.Screen
+        name="ManageUsers"
+        component={ManageUsersScreen}
+        options={{ title: 'Phê duyệt người dùng' }}
+      />
+    </Stack.Navigator>
+  );
+}
 function BossTabs() {
   const taskBadge = useTaskBadge();
   return (
@@ -114,20 +144,9 @@ function BossTabs() {
           }}
         />
         <Tab.Screen
-          name="ManageUsers"
-          component={ManageUsersScreen}
-          options={{
-            title: 'Người dùng',
-            tabBarIcon: tabIcon('👥'),
-          }}
-        />
-        <Tab.Screen
           name="Settings"
-          component={SettingsScreen}
-          options={{
-            title: 'Cài đặt',
-            tabBarIcon: tabIcon('⚙️'),
-          }}
+          component={SettingsStack}
+          options={settingsTabOptions}
         />
       </Tab.Navigator>
     </>
@@ -180,18 +199,15 @@ function StaffTabs() {
       />
       <Tab.Screen
         name="Settings"
-        component={SettingsScreen}
-        options={{
-          title: 'Cài đặt',
-          tabBarIcon: tabIcon('⚙️'),
-        }}
+        component={SettingsStack}
+        options={settingsTabOptions}
       />
     </Tab.Navigator>
   );
 }
 
 // `dev` (review/demo) role: the staff experience (register + history) PLUS the
-// user-management/approval screen. Lets an App Review account exercise every
+// user-management/approval screen (trong Cài đặt). Lets an App Review account exercise every
 // feature from one login.
 function DevTabs() {
   const taskBadge = useTaskBadge();
@@ -241,20 +257,9 @@ function DevTabs() {
           }}
         />
         <Tab.Screen
-          name="ManageUsers"
-          component={ManageUsersScreen}
-          options={{
-            title: 'Phê duyệt',
-            tabBarIcon: tabIcon('👥'),
-          }}
-        />
-        <Tab.Screen
           name="Settings"
-          component={SettingsScreen}
-          options={{
-            title: 'Cài đặt',
-            tabBarIcon: tabIcon('⚙️'),
-          }}
+          component={SettingsStack}
+          options={settingsTabOptions}
         />
       </Tab.Navigator>
     </>
@@ -270,6 +275,7 @@ export default function RootNavigator() {
     isDev,
     isApproved,
     isActive,
+    hasUnit,
     retryProfile,
   } = useAuth();
   // Đã đăng nhập mà kẹt ở bước đọc hồ sơ (mạng chập chờn) thì cho thử lại;
@@ -302,8 +308,9 @@ export default function RootNavigator() {
     ) : (
       splash
     );
-  } else if (!isBoss && !isDev && !isApproved) {
-    // Signed in staff, not yet approved → locked out of all features.
+  } else if (!hasUnit || (!isBoss && !isDev && !isApproved)) {
+    // Chưa chọn đơn vị (kể cả boss/dev của bản cũ), hoặc cán bộ chưa được
+    // duyệt → chỉ ở màn chờ: chọn đơn vị + chức vụ, chờ Trưởng CA đơn vị duyệt.
     content = (
       <Stack.Navigator
         screenOptions={{
@@ -326,13 +333,13 @@ export default function RootNavigator() {
     );
   } else {
     content = (
-      <>
+      <React.Fragment key={profile.unitId}>
         {/* Tệp "chuyển lịch" chia sẻ từ Zalo chỉ được nhận khi đã vào app. */}
         <IncomingDutyFileListener />
         {/* Nhiệm vụ: đồng bộ chuông đến hạn + mở từ thông báo, mọi vai trò. */}
         <TaskReminderSync />
         {isBoss ? <BossTabs /> : isDev ? <DevTabs /> : <StaffTabs />}
-      </>
+      </React.Fragment>
     );
   }
   return (

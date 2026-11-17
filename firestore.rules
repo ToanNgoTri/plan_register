@@ -11,24 +11,72 @@ service cloud.firestore {
     function myProfile() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
+
+    // ---- ĐƠN VỊ (xã/phường) ----
+    // Mỗi tài khoản thuộc đúng một đơn vị (users/{uid}.unitId). Mọi dữ liệu
+    // nghiệp vụ nằm dưới units/{unitId}/… và CHỈ người của đơn vị đó đọc/ghi
+    // được — kể cả Trưởng CA hay dev cũng không nhìn sang đơn vị khác. Các
+    // hàm vai trò bên dưới (isBoss, isManager…) là vai trò TRONG đơn vị của
+    // mình, nên luôn phải đi kèm inUnit(unitId).
+    function myUnit() {
+      return myProfile().get('unitId', '');
+    }
+    function inUnit(unitId) {
+      return isSignedIn() && unitId != '' && myUnit() == unitId;
+    }
+    // unitId có trong danh mục 95 đơn vị (units/{id}, do scripts/seedUnits.js).
+    function unitExists(unitId) {
+      return unitId is string && unitId != ''
+        && exists(/databases/$(database)/documents/units/$(unitId));
+    }
     // Boss by explicit role OR by the "Trưởng CA" chức vụ (position alone grants
     // boss permissions). Keep the literal in sync with BOSS_POSITION in the app.
+    // Phải ĐÃ ĐƯỢC DUYỆT: người tự chọn "Trưởng CA" ở màn chờ duyệt chỉ giữ chỗ
+    // và chờ admin đơn vị / dev duyệt — chưa có quyền gì.
     function isBoss() {
       return isSignedIn()
         && (myProfile().role == 'boss'
-            || myProfile().get('position', '') == 'Trưởng CA');
+            || myProfile().get('position', '') == 'Trưởng CA')
+        && myProfile().get('approved', false) == true;
     }
-    // `dev` is a review/demo role: staff-like features PLUS user approval.
+    // `dev` = quản trị tổng (nhà phát triển): staff-like features PLUS user
+    // approval; đọc/duyệt hồ sơ người dùng MỌI đơn vị. Chỉ đặt qua console.
     function isDev() {
       return isSignedIn() && myProfile().role == 'dev';
+    }
+    // "Cán bộ (admin)" (role admin): cán bộ + quản trị TÀI KHOẢN của đơn vị
+    // mình (duyệt người, duyệt yêu cầu Trưởng CA). Mỗi đơn vị một admin
+    // (unit_admins). Không có quyền dữ liệu như Trưởng CA.
+    function isAdmin() {
+      return isSignedIn()
+        && myProfile().role == 'admin'
+        && myProfile().approved == true
+        && myProfile().get('active', true) == true;
     }
     // May manage (read/approve/deactivate/delete) other user accounts.
     function isManager() {
       return isBoss() || isDev();
     }
+    function isUnitManager(unitId) {
+      return isManager() && inUnit(unitId);
+    }
+    // Quản lý TÀI KHOẢN (duyệt / ngừng / xoá / đổi chức vụ): Trưởng CA, dev,
+    // admin đơn vị.
+    function isAccountManager() {
+      return isManager() || isAdmin();
+    }
+    function isAccountManagerOf(unitId) {
+      return isAccountManager() && inUnit(unitId);
+    }
+    // Giao / thu / chuyển chức Trưởng CA và Cán bộ (admin) của một đơn vị:
+    // Trưởng CA của chính đơn vị đó, hoặc dev (quản trị tổng).
+    function isUnitLead(unitId) {
+      return isDev() || (isBoss() && inUnit(unitId));
+    }
+    // Cán bộ đã duyệt — admin cũng là cán bộ (đăng ký kế hoạch, lịch trực…).
     function isApprovedStaff() {
       return isSignedIn()
-        && myProfile().role == 'staff'
+        && myProfile().role in ['staff', 'admin']
         && myProfile().approved == true
         && myProfile().active == true;
     }
@@ -55,21 +103,21 @@ service cloud.firestore {
     // May read AND post the duty roster (lịch trực). Deliberately everyone with
     // access to the app: approved staff, the boss, and the dev account. Keep in
     // sync with canUseDuty() in storage.rules.
-    function canUseDuty() {
-      return isApprovedStaff() || isManager();
+    function canUseDuty(unitId) {
+      return inUnit(unitId) && (isApprovedStaff() || isManager());
     }
 
     // May read the sổ số văn bản and take a number. Same audience as the duty
     // roster: everyone with access to the app.
-    function canUseDocNumbers() {
-      return isApprovedStaff() || isManager();
+    function canUseDocNumbers(unitId) {
+      return inUnit(unitId) && (isApprovedStaff() || isManager());
     }
     // The caller currently holds the (unexpired) "đang nhập" lock FOR THAT
     // DOC TYPE. Used to gate the counters, so a number can only be issued by
     // whoever holds that particular book — one lock per loại văn bản, so two
     // clerks working on different types never block each other.
-    function holdsDocTypeLock(typeId) {
-      let lock = get(/databases/$(database)/documents/doc_number_locks/$(typeId));
+    function holdsDocTypeLock(unitId, typeId) {
+      let lock = get(/databases/$(database)/documents/units/$(unitId)/doc_number_locks/$(typeId));
       return lock != null
         && lock.data.uid == request.auth.uid
         && lock.data.expiresAt > request.time.toMillis();
@@ -113,81 +161,258 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ---- danh mục đơn vị: units/{unitId} ----
+    // 95 xã/phường của Đồng Nai, do scripts/seedUnits.js ghi bằng quyền admin.
+    // Ai đăng nhập cũng đọc được (để chọn đơn vị khi đăng ký); không ai sửa
+    // được từ app. Dữ liệu con của từng đơn vị có rule riêng bên dưới.
+    match /units/{unitId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // ---- Trưởng CA của đơn vị: unit_chiefs/{unitId} = { uid } ----
+    // Giữ chỗ "mỗi đơn vị một Trưởng CA tự nhận". Tự tạo được chỉ khi CÙNG lượt
+    // ghi đó hồ sơ của mình chuyển sang Trưởng CA của đúng đơn vị này; đã có
+    // document (người khác giữ) thì không tạo đè được — update chỉ dành cho
+    // quản lý của đơn vị (trao chức). Chỉ lộ uid nên ai đăng nhập cũng đọc được.
+    match /unit_chiefs/{unitId} {
+      function myProfileAfter() {
+        return getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      }
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.uid is string
+        && (isUnitLead(unitId)
+            || (request.resource.data.uid == request.auth.uid
+                && myProfileAfter().get('unitId', '') == unitId
+                && myProfileAfter().get('position', '') == 'Trưởng CA'));
+      // Chuyển chức (đổi người giữ): Trưởng CA đơn vị / dev. Admin đơn vị chỉ
+      // xác nhận lại đúng người đang xin (duyệt yêu cầu).
+      allow update: if request.resource.data.uid is string
+        && (isUnitLead(unitId)
+            || (isAccountManagerOf(unitId)
+                && request.resource.data.uid == resource.data.uid));
+      // Admin đơn vị trả chỗ khi TỪ CHỐI một yêu cầu (người giữ chưa duyệt).
+      allow delete: if isUnitLead(unitId)
+        || (isSignedIn() && resource.data.uid == request.auth.uid)
+        || (isAccountManagerOf(unitId)
+            && get(/databases/$(database)/documents/users/$(resource.data.uid)).data.get('approved', false) != true);
+    }
+
+    // ---- "Cán bộ (admin)" của đơn vị: unit_admins/{unitId} = { uid } ----
+    // Mỗi đơn vị MỘT admin. Tự nhận được khi chỗ còn trống, trong cùng lượt ghi
+    // hồ sơ chuyển sang "Cán bộ (admin)" của đúng đơn vị này (người đầu tiên
+    // của đơn vị mới cũng nhận được → có người duyệt). Không ai ghi đè chỗ
+    // người khác; dev (quản trị tổng) chỉnh được mọi đơn vị.
+    match /unit_admins/{unitId} {
+      function myProfileAfterA() {
+        return getAfter(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+      }
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+        && request.resource.data.uid is string
+        && (isUnitLead(unitId)
+            || (request.resource.data.uid == request.auth.uid
+                && myProfileAfterA().get('unitId', '') == unitId
+                && myProfileAfterA().get('position', '') == 'Cán bộ (admin)'));
+      // Giao / chuyển / thu admin: Trưởng CA đơn vị hoặc dev.
+      allow update: if isUnitLead(unitId) && request.resource.data.uid is string;
+      allow delete: if isUnitLead(unitId)
+        || (isSignedIn() && resource.data.uid == request.auth.uid);
+    }
+
     // ---- users ----
     match /users/{uid} {
-      // A user can read their own profile; a manager (boss/dev) reads everyone.
-      // Any signed-in user may also read a "Trưởng CA" profile — used to detect
-      // whether a Trưởng CA already exists (so the option can be hidden). This
-      // only exposes the commander's profile, which is not sensitive here.
-      // Phó Trưởng CA cũng đọc được hồ sơ để chọn người nhận nhiệm vụ.
+      function sameUnitAsTarget() {
+        return myUnit() != '' && resource.data.get('unitId', '') == myUnit();
+      }
+      function selfUpdateOk() {
+        let before = resource.data;
+        let after = request.resource.data;
+        let newUnit = after.get('unitId', '');
+        let unitChanged = newUnit != before.get('unitId', '');
+        let isChief = after.get('position', '') == 'Trưởng CA';
+        let becameChief = isChief
+          && (before.get('position', '') != 'Trưởng CA' || unitChanged);
+        let isAdminPos = after.get('position', '') == 'Cán bộ (admin)';
+        let becameAdmin = isAdminPos
+          && (before.get('position', '') != 'Cán bộ (admin)' || unitChanged);
+        return after.active == before.active
+          && (newUnit == '' || unitExists(newUnit))
+          && (
+               // dev (quản trị) giữ role/approved; được tự chuyển đơn vị
+               // (điều chuyển) mà không cần duyệt.
+               (before.role == 'dev'
+                && after.role == 'dev'
+                && after.approved == before.approved)
+               ||
+               (before.role != 'dev'
+                && isAdminPos
+                && (becameAdmin
+                    // Nhận "Cán bộ (admin)": chỉ khi giữ được chỗ unit_admins
+                    // (đơn vị chưa có admin) → được duyệt ngay.
+                    ? (after.role == 'admin'
+                       && after.approved == true
+                       && newUnit != ''
+                       && getAfter(/databases/$(database)/documents/unit_admins/$(newUnit)).data.uid
+                          == request.auth.uid)
+                    : (after.role == before.role
+                       && after.approved == before.approved)))
+               ||
+               (before.role != 'dev'
+                && !isAdminPos
+                && (isChief
+                    ? (becameChief
+                        // Xin làm Trưởng CA: giữ chỗ unit_chiefs (chỉ khi đơn
+                        // vị còn trống) và CHỜ ADMIN/DEV DUYỆT — không tự duyệt.
+                        ? (after.role == 'staff'
+                           && after.approved == false
+                           && newUnit != ''
+                           && getAfter(/databases/$(database)/documents/unit_chiefs/$(newUnit)).data.uid
+                              == request.auth.uid)
+                        // Đã là Trưởng CA (cùng đơn vị): chỉ sửa họ tên…
+                        : (after.role == before.role
+                           && after.approved == before.approved))
+                    : (after.role == 'staff'
+                       && (after.approved == false
+                           || (after.approved == before.approved && !unitChanged)))))
+             );
+      }
+      // Duyệt một yêu cầu Trưởng CA (chưa duyệt → đã duyệt): chỉ admin đơn vị
+      // hoặc dev — Trưởng CA khác không duyệt.
+      function approvesChief() {
+        return request.resource.data.get('position', '') == 'Trưởng CA'
+          && request.resource.data.get('approved', false) == true
+          && resource.data.get('approved', false) != true;
+      }
+      // Thay đổi đụng tới chức Trưởng CA / admin (giao, thu, chuyển).
+      function changesSpecial() {
+        let a = request.resource.data;
+        let b = resource.data;
+        let special = ['Trưởng CA', 'Cán bộ (admin)'];
+        return (a.get('position', '') != b.get('position', '')
+                && (a.get('position', '') in special
+                    || b.get('position', '') in special))
+          || (a.role != b.role
+              && (a.role in ['boss', 'admin'] || b.role in ['boss', 'admin']));
+      }
+      // Kết quả hợp lệ: không ai cấp role dev; ai được GIAO admin / Trưởng CA
+      // phải là người đã duyệt và giữ đúng chỗ unit_admins / unit_chiefs sau
+      // lượt ghi; role admin luôn đi cùng chức vụ "Cán bộ (admin)".
+      function validSpecialTarget() {
+        let a = request.resource.data;
+        let b = resource.data;
+        let unit = b.get('unitId', '');
+        return !(a.role == 'dev' && b.role != 'dev')
+          && (a.role != 'admin' || a.get('position', '') == 'Cán bộ (admin)')
+          && (a.get('position', '') != 'Cán bộ (admin)'
+              || b.get('position', '') == 'Cán bộ (admin)'
+              || (a.role == 'admin'
+                  && a.approved == true
+                  && b.get('approved', false) == true
+                  && getAfter(/databases/$(database)/documents/unit_admins/$(unit)).data.uid == uid))
+          && (a.get('position', '') != 'Trưởng CA'
+              || b.get('position', '') == 'Trưởng CA'
+              || (a.role == 'boss'
+                  && a.approved == true
+                  && b.get('approved', false) == true
+                  && getAfter(/databases/$(database)/documents/unit_chiefs/$(unit)).data.uid == uid));
+      }
+      // Từ chối một yêu cầu Trưởng CA (chưa duyệt): bỏ chức vụ, vẫn chờ duyệt.
+      function rejectsChief() {
+        let a = request.resource.data;
+        let b = resource.data;
+        return b.get('position', '') == 'Trưởng CA'
+          && b.get('approved', false) != true
+          && a.get('position', '') != 'Trưởng CA'
+          && a.role == 'staff'
+          && a.approved == false;
+      }
+
+      // A user can read their own profile; a manager (boss/dev) or Phó Trưởng
+      // CA reads the profiles of THEIR OWN đơn vị only (quản lý tài khoản / chọn
+      // người nhận nhiệm vụ). Mọi truy vấn danh sách phải lọc unitId == mình.
+      // dev đọc được hồ sơ MỌI đơn vị (để duyệt yêu cầu Trưởng CA) — chỉ hồ
+      // sơ, dữ liệu nghiệp vụ của đơn vị khác vẫn bị chặn.
       allow read: if isSignedIn()
         && (request.auth.uid == uid
-            || isManager()
-            || isDeputy()
-            || resource.data.get('position', '') == 'Trưởng CA');
+            || isDev()
+            || ((isAccountManager() || isDeputy()) && sameUnitAsTarget()));
 
       // New users create their own profile, but cannot self-approve or make
-      // themselves a boss. They start active but unapproved.
+      // themselves a boss. They start active, unapproved, with NO đơn vị yet
+      // (chosen next on the pending screen).
       allow create: if isSignedIn()
         && request.auth.uid == uid
         && request.resource.data.role == 'staff'
         && request.resource.data.approved == false
-        && request.resource.data.active == true;
+        && request.resource.data.active == true
+        && request.resource.data.get('unitId', '') == '';
 
-      // A manager (boss/dev) may update anyone (e.g. to approve or deactivate).
+      // A manager (boss/dev) may update anyone IN THEIR ĐƠN VỊ (approve,
+      // deactivate, đổi chức vụ) but never move them to another đơn vị.
       // A user may update their own profile but NEVER their `active` flag, and
       // their `role`/`approved` must follow their chức vụ:
-      //   - "Trưởng CA"  ⇒ role must be 'boss' AND approved must be true
-      //                    (picking this chức vụ self-promotes + auto-approves).
-      //   - any other    ⇒ role must be 'staff' AND approved unchanged
-      //                    (no self-approval, no self-granting dev/boss).
-      // A `dev` account is exempt (keeps its role/approved unchanged).
-      allow update: if isManager()
-        || (request.auth.uid == uid
-            && request.resource.data.active == resource.data.active
-            && (
-                 (resource.data.role == 'dev'
-                  && request.resource.data.role == 'dev'
-                  && request.resource.data.approved == resource.data.approved)
-                 ||
-                 (request.resource.data.role ==
-                    (request.resource.data.get('position', '') == 'Trưởng CA'
-                      ? 'boss' : 'staff')
-                  && request.resource.data.approved ==
-                    (request.resource.data.get('position', '') == 'Trưởng CA'
-                      ? true : resource.data.approved))
-               ));
+      //   - "Trưởng CA"  ⇒ chỉ là YÊU CẦU: role 'staff', approved false, giữ
+      //                    chỗ unit_chiefs của đơn vị trong cùng lượt ghi (đơn
+      //                    vị đã có Trưởng CA thì không xin được). Chỉ dev
+      //                    duyệt (approvesChief) — Trưởng CA khác không duyệt.
+      //   - "Cán bộ (admin)" ⇒ role 'admin', approved true — chỉ khi giữ chỗ
+      //                    unit_admins (đơn vị chưa có admin).
+      //   - any other    ⇒ role must be 'staff'; approved unchanged (no
+      //                    self-approval) or dropped to false. Changing đơn vị
+      //                    ALWAYS drops back to chờ duyệt of the new đơn vị.
+      // A `dev` account keeps its role/approved and may move between đơn vị.
+      //  - Giao / thu / chuyển Trưởng CA và Cán bộ (admin): Trưởng CA của đơn
+      //    vị (cho người trong đơn vị) hoặc dev.
+      //  - Duyệt / từ chối YÊU CẦU Trưởng CA: admin đơn vị hoặc dev.
+      //  - Việc thường (duyệt cán bộ, ngừng, đổi chức vụ thường): mọi người
+      //    quản lý tài khoản của đơn vị.
+      allow update: if
+        (isDev()
+          && validSpecialTarget()
+          && request.resource.data.get('unitId', '') == resource.data.get('unitId', ''))
+        || (isAccountManager() && sameUnitAsTarget()
+          && validSpecialTarget()
+          && request.resource.data.get('unitId', '') == resource.data.get('unitId', '')
+          && ((!changesSpecial() && !approvesChief())
+              || (isBoss() && !approvesChief())
+              || (isAdmin() && (approvesChief() || rejectsChief()))))
+        || (request.auth.uid == uid && selfUpdateOk());
 
-      // A manager may delete anyone; a user may delete their own account.
-      allow delete: if isManager() || request.auth.uid == uid;
+      // A manager may delete anyone in their đơn vị (dev: mọi đơn vị); a user
+      // may delete their own account.
+      allow delete: if isDev()
+        || (isAccountManager() && sameUnitAsTarget())
+        || request.auth.uid == uid;
     }
 
-    // ---- duty roster: duty_schedules/{force} ----
+    // ---- duty roster: units/{unitId}/duty_schedules/{force} ----
     // One CURRENT roster per lực lượng ('CA' / 'ANCS'); posting a new one
     // overwrites the doc (no history is kept). Anyone with app access may post,
     // so `uploadedBy` is forced to the caller — the roster always shows who put
     // it there. Deleting is narrower: only the person who posted it, or a
     // manager, so a stray tap cannot wipe someone else's roster.
-    match /duty_schedules/{force} {
-      allow read: if canUseDuty();
-      allow create, update: if canUseDuty()
+    match /units/{unitId}/duty_schedules/{force} {
+      allow read: if canUseDuty(unitId);
+      allow create, update: if canUseDuty(unitId)
         && force in ['CA', 'ANCS']
         && request.resource.data.force == force
         && request.resource.data.uploadedBy == request.auth.uid;
-      allow delete: if isManager()
-        || (canUseDuty() && resource.data.uploadedBy == request.auth.uid);
+      allow delete: if isUnitManager(unitId)
+        || (canUseDuty(unitId) && resource.data.uploadedBy == request.auth.uid);
     }
 
-    // ---- sổ số văn bản ----
+    // ---- sổ số văn bản (mỗi đơn vị một sổ, dưới units/{unitId}/) ----
     // Cùng nhóm người dùng với lịch trực: cán bộ đã duyệt + boss + dev.
     //
     //  doc_numbers/{id}            – văn bản đã được cấp số (sổ gốc)
     //  doc_number_counters/{id}    – { next } : số sẽ cấp tiếp cho một loại/năm
     //  doc_number_locks/{typeId}   – ai đang lấy số của loại văn bản đó
-    match /doc_numbers/{id} {
-      allow read: if canUseDocNumbers();
+    match /units/{unitId}/doc_numbers/{id} {
+      allow read: if canUseDocNumbers(unitId);
       // `createdBy` bị ép về chính người gọi: sổ luôn truy được ai lấy số.
-      allow create: if canUseDocNumbers()
+      allow create: if canUseDocNumbers(unitId)
         && request.resource.data.createdBy == request.auth.uid;
       // Sổ số văn bản là sổ gốc: đã cấp thì không sửa, không xoá — sửa số đã
       // phát hành ra ngoài sẽ làm lệch cả dãy số. Cần bỏ một số thì huỷ bằng
@@ -199,15 +424,15 @@ service cloud.firestore {
     // CỦA CHÍNH LOẠI đó — chặn cả việc lùi số (cấp trùng) lẫn việc nhảy cóc số.
     // Mỗi năm là một document riêng (`2026-QD`), nên số của năm mới bắt đầu lại
     // từ 1 mà không ai phải xoá/đặt lại bộ đếm cũ.
-    match /doc_number_counters/{id} {
-      allow read: if canUseDocNumbers();
-      allow create: if canUseDocNumbers()
+    match /units/{unitId}/doc_number_counters/{id} {
+      allow read: if canUseDocNumbers(unitId);
+      allow create: if canUseDocNumbers(unitId)
         && counterIdMatches(id)
-        && holdsDocTypeLock(request.resource.data.typeId)
+        && holdsDocTypeLock(unitId, request.resource.data.typeId)
         && request.resource.data.next == 2;
-      allow update: if canUseDocNumbers()
+      allow update: if canUseDocNumbers(unitId)
         && counterIdMatches(id)
-        && holdsDocTypeLock(request.resource.data.typeId)
+        && holdsDocTypeLock(unitId, request.resource.data.typeId)
         && request.resource.data.next == resource.data.next + 1;
       allow delete: if false;
     }
@@ -215,15 +440,15 @@ service cloud.firestore {
     // Bộ đếm chữ phụ của MỘT số cụ thể (12A, 12B...). Cùng luật với bộ đếm
     // chính: chỉ người đang giữ khoá của loại đó được tăng, và chỉ tăng đúng
     // một đơn vị — lùi lại là cấp trùng chữ, nhảy cóc là mất chữ.
-    match /doc_number_suffixes/{id} {
-      allow read: if canUseDocNumbers();
-      allow create: if canUseDocNumbers()
+    match /units/{unitId}/doc_number_suffixes/{id} {
+      allow read: if canUseDocNumbers(unitId);
+      allow create: if canUseDocNumbers(unitId)
         && suffixIdMatches(id)
-        && holdsDocTypeLock(request.resource.data.typeId)
+        && holdsDocTypeLock(unitId, request.resource.data.typeId)
         && request.resource.data.next == 2;
-      allow update: if canUseDocNumbers()
+      allow update: if canUseDocNumbers(unitId)
         && suffixIdMatches(id)
-        && holdsDocTypeLock(request.resource.data.typeId)
+        && holdsDocTypeLock(unitId, request.resource.data.typeId)
         && request.resource.data.next == resource.data.next + 1;
       allow delete: if false;
     }
@@ -238,9 +463,9 @@ service cloud.firestore {
     // không nhồi một danh mục khổng lồ. Ràng buộc thật (id chỉ gồm chữ và số,
     // không trùng, không đổi id của loại đã dùng) do app giữ — chấp nhận được
     // vì chỉ quản lý mới ghi được vào đây.
-    match /doc_number_options/{id} {
-      allow read: if canUseDocNumbers();
-      allow write: if isManager()
+    match /units/{unitId}/doc_number_options/{id} {
+      allow read: if canUseDocNumbers(unitId);
+      allow write: if isUnitManager(unitId)
         && id == 'lists'
         && request.resource.data.signers is list
         && request.resource.data.units is list
@@ -254,17 +479,17 @@ service cloud.firestore {
     // không ai giả danh người khác "đang nhập" hay giữ khoá loại này để cấp số
     // loại khác được. Nhả khoá thì rộng hơn: chủ khoá, quản lý (gỡ kẹt), hoặc
     // bất kỳ ai khi khoá đã hết hạn.
-    match /doc_number_locks/{typeId} {
-      allow read: if canUseDocNumbers();
-      allow create: if canUseDocNumbers()
+    match /units/{unitId}/doc_number_locks/{typeId} {
+      allow read: if canUseDocNumbers(unitId);
+      allow create: if canUseDocNumbers(unitId)
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.typeId == typeId;
-      allow update: if canUseDocNumbers()
+      allow update: if canUseDocNumbers(unitId)
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.typeId == typeId
         && (resource.data.uid == request.auth.uid || lockExpired());
-      allow delete: if isManager()
-        || (canUseDocNumbers()
+      allow delete: if isUnitManager(unitId)
+        || (canUseDocNumbers(unitId)
             && (resource.data.uid == request.auth.uid || lockExpired()));
     }
 
@@ -322,6 +547,11 @@ service cloud.firestore {
               && (isApprovedStaff() || isManager()))
             || (isCommander()
               && request.resource.data.assigneeUid != request.auth.uid
+              && myUnit() != ''
+              // Chỉ giao cho người CÙNG ĐƠN VỊ.
+              && get(/databases/$(database)/documents/users/$(
+                   request.resource.data.assigneeUid)).data.get('unitId', '')
+                 == myUnit()
               && commandRank(get(/databases/$(database)/documents/users/$(
                    request.resource.data.assigneeUid)).data)
                  < commandRank(myProfile())))
@@ -370,9 +600,12 @@ service cloud.firestore {
       allow delete: if isTaskAssigner();
     }
 
-    // ---- plan history: history/{year}/months/{month}/days/{day}/entries/{uid}
+    // ---- plan history:
+    //   units/{unitId}/history/{year}/months/{month}/days/{day}/entries/{uid}
     // Rule A (recursive wildcard) also covers collectionGroup('entries') — the
-    // staff "own history" query. It grants: boss → all; staff → own (any day).
+    // "own history" query. It grants ONLY one's own entries (any day, any
+    // path). Reading other people's entries goes through Rule B, scoped to the
+    // caller's đơn vị.
     match /{path=**}/entries/{uid} {
       // Own entries (any day), for both `get` and collectionGroup queries:
       //  - doc-id branch (request.auth.uid == uid): allows a `get` on a
@@ -382,23 +615,28 @@ service cloud.firestore {
       //    collectionGroup('entries').where('uid','==', me) query pass the
       //    Firestore query-rules analysis (which matches on the field, not the
       //    doc id).
-      allow read: if isManager()
-        || (isSignedIn() && request.auth.uid == uid)
+      allow read: if (isSignedIn() && request.auth.uid == uid)
         || (isSignedIn() && resource != null && resource.data.uid == request.auth.uid);
-
-      // Approved staff (or a dev account) may write only their own entry.
-      allow write: if canRegister()
-        && request.auth.uid == uid
-        && request.resource.data.uid == request.auth.uid;
     }
 
-    // Rule B: approved staff may additionally READ everyone's entries for the
-    // CURRENT day (the "đăng ký công tác hôm nay" coordination view). Past days
-    // stay private — a query on an older day's entries is denied for staff, so
-    // the History screen cannot see other users. (Rules are additive: a doc is
-    // readable if Rule A OR Rule B allows it.)
-    match /history/{year}/months/{month}/days/{day}/entries/{uid} {
-      allow read: if (isApprovedStaff() || isDev()) && isTodayVN(year, month, day);
+    // Rule B (within the caller's đơn vị only):
+    //  - the boss / dev reads every entry of their đơn vị (any day);
+    //  - approved staff read everyone's entries for the CURRENT day (the "đăng
+    //    ký công tác hôm nay" coordination view). Past days stay private — a
+    //    query on an older day's entries is denied for staff, so the History
+    //    screen cannot see other users.
+    // (Rules are additive: a doc is readable if Rule A OR Rule B allows it.)
+    match /units/{unitId}/history/{year}/months/{month}/days/{day}/entries/{uid} {
+      allow read: if inUnit(unitId)
+        && (isManager()
+            || ((isApprovedStaff() || isDev()) && isTodayVN(year, month, day)));
+
+      // Approved staff (or a dev account) may write only their own entry, and
+      // only into their own đơn vị.
+      allow write: if inUnit(unitId)
+        && canRegister()
+        && request.auth.uid == uid
+        && request.resource.data.uid == request.auth.uid;
     }
   }
 }

@@ -28,8 +28,19 @@ export const ANDROID_CHANNEL_ID = 'plan-register-default';
  * approval), regardless of the stored `role`. Keep this string in sync with
  * the same literal in firestore.rules.
  */
-export const POSITIONS = ['Trưởng CA', 'Phó Trưởng CA', 'Cán bộ'];
+export const POSITIONS = [
+  'Trưởng CA',
+  'Phó Trưởng CA',
+  'Cán bộ',
+  'Cán bộ (admin)',
+];
 export const BOSS_POSITION = 'Trưởng CA';
+/**
+ * "Cán bộ (admin)" = role admin: cán bộ + quản trị (duyệt người, duyệt Trưởng
+ * CA) CHỈ đơn vị của mình; mỗi đơn vị một admin (unit_admins). Khác role dev
+ * (quản trị tổng, mọi đơn vị). Khớp literal trong rules.
+ */
+export const ADMIN_POSITION = 'Cán bộ (admin)';
 
 /**
  * Các lực lượng có lịch trực riêng (2 tab con của màn hình Lịch trực).

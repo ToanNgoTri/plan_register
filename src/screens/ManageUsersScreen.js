@@ -8,24 +8,45 @@ import {
   View,
 } from 'react-native';
 import {
+  approveChiefRequest,
   approveUser,
   deactivateUser,
   deleteUser,
   displayNameOf,
+  isChiefRequest,
   reactivateUser,
+  rejectChiefRequest,
   setUserPosition,
+  subscribeChiefRequests,
   subscribeToUsers,
 } from '../services/userService';
+import { useAuth } from '../context/AuthContext';
+import { unitName } from '../config/units';
 import PositionSelect from '../components/PositionSelect';
+import { ADMIN_POSITION, BOSS_POSITION, POSITIONS } from '../config/constants';
+
+const SPECIAL = [BOSS_POSITION, ADMIN_POSITION];
+// Chức vụ thường (admin đơn vị chỉ đổi được các chức vụ này).
+const PLAIN_POSITIONS = POSITIONS.filter(p => !SPECIAL.includes(p));
 import { colors, spacing } from '../theme';
 /**
- * Boss screen to manage ALL user accounts (staff, boss, dev):
+ * Boss screen to manage the user accounts OF THE BOSS'S OWN ĐƠN VỊ (staff,
+ * boss, dev) — người đơn vị khác không hiện ở đây (và rules cũng chặn):
  *  - Chờ duyệt  → Duyệt / Xóa
  *  - Đang hoạt động → Ngừng hoạt động / Xóa
  *  - Ngừng hoạt động → Kích hoạt lại / Xóa
+ *
+ * Yêu cầu làm Trưởng CA chỉ DEV duyệt: dev thấy thêm mục "Yêu cầu Trưởng CA"
+ * của MỌI đơn vị (Duyệt / Từ chối); Trưởng CA đơn vị chỉ thấy "Chờ dev duyệt".
  */
 export default function ManageUsersScreen() {
+  const { isDev, isAdmin, isBoss } = useAuth();
+  // Giao / thu / chuyển Trưởng CA và Cán bộ (admin): Trưởng CA đơn vị hoặc dev.
+  const canAssignSpecial = isBoss || isDev;
+  // Duyệt yêu cầu Trưởng CA: admin của đơn vị, hoặc dev (mọi đơn vị).
+  const canApproveChief = isDev || isAdmin;
   const [users, setUsers] = useState([]);
+  const [chiefRequests, setChiefRequests] = useState([]);
   const [busy, setBusy] = useState(null);
   useEffect(() => {
     const unsub = subscribeToUsers(setUsers, e =>
@@ -33,11 +54,32 @@ export default function ManageUsersScreen() {
     );
     return unsub;
   }, []);
+  useEffect(() => {
+    if (!isDev) {
+      setChiefRequests([]);
+      return undefined;
+    }
+    return subscribeChiefRequests(setChiefRequests, e =>
+      Alert.alert('Lỗi', e.message),
+    );
+  }, [isDev]);
   const sections = useMemo(() => {
-    const pending = users.filter(u => !u.approved);
+    // Với dev, yêu cầu Trưởng CA đã nằm ở mục riêng (mọi đơn vị).
+    const pending = users.filter(
+      u => !u.approved && !(isDev && isChiefRequest(u)),
+    );
     const active = users.filter(u => u.approved && u.active !== false);
     const inactive = users.filter(u => u.approved && u.active === false);
     return [
+      ...(isDev
+        ? [
+            {
+              title: `Yêu cầu Trưởng CA (${chiefRequests.length})`,
+              kind: 'chief',
+              data: chiefRequests,
+            },
+          ]
+        : []),
       {
         title: `Chờ duyệt (${pending.length})`,
         kind: 'pending',
@@ -54,7 +96,7 @@ export default function ManageUsersScreen() {
         data: inactive,
       },
     ];
-  }, [users]);
+  }, [users, chiefRequests, isDev]);
   const withBusy = (uid, fn) => async () => {
     try {
       setBusy(uid);
@@ -65,13 +107,45 @@ export default function ManageUsersScreen() {
       setBusy(null);
     }
   };
-  // Change a user's chức vụ; picking "Trưởng CA" promotes them to boss (and
-  // auto-approves). No-op if the value is unchanged.
+  // Đổi chức vụ. Giao Trưởng CA / admin khi đã có người giữ = chuyển chức
+  // (người cũ về Cán bộ); thu chức = đổi sang chức vụ thường. Hỏi lại trước.
   const changePosition = (u, position) => {
     if (!position || position === u.position) {
       return;
     }
-    withBusy(u.uid, () => setUserPosition(u.uid, position, u.role))();
+    const run = withBusy(u.uid, () => setUserPosition(u, position));
+    const name = displayNameOf(u);
+    if (SPECIAL.includes(position)) {
+      const holder = users.find(
+        x => x.uid !== u.uid && x.position === position && x.approved,
+      );
+      Alert.alert(
+        position === ADMIN_POSITION ? 'Giao Cán bộ (admin)' : 'Giao Trưởng CA',
+        `Giao chức ${position} cho "${name}"?` +
+          (holder
+            ? ` "${displayNameOf(
+                holder,
+              )}" sẽ thôi giữ chức này và trở về Cán bộ.`
+            : ''),
+        [
+          { text: 'Huỷ', style: 'cancel' },
+          { text: 'Giao', onPress: run },
+        ],
+      );
+      return;
+    }
+    if (SPECIAL.includes(u.position)) {
+      Alert.alert(
+        'Thu chức',
+        `Thu chức ${u.position} của "${name}" (chuyển thành ${position})?`,
+        [
+          { text: 'Huỷ', style: 'cancel' },
+          { text: 'Thu chức', style: 'destructive', onPress: run },
+        ],
+      );
+      return;
+    }
+    run();
   };
   const confirmDelete = u =>
     Alert.alert(
@@ -87,7 +161,7 @@ export default function ManageUsersScreen() {
         {
           text: 'Xóa',
           style: 'destructive',
-          onPress: withBusy(u.uid, () => deleteUser(u.uid)),
+          onPress: withBusy(u.uid, () => deleteUser(u)),
         },
       ],
     );
@@ -115,12 +189,43 @@ export default function ManageUsersScreen() {
       color: colors.danger,
       run: async () => confirmDelete(u),
     };
-    if (kind === 'pending') {
+    if (kind === 'chief') {
       return [
         {
           label: 'Duyệt',
           color: colors.success,
-          run: withBusy(u.uid, () => approveUser(u.uid)),
+          run: withBusy(u.uid, () => approveChiefRequest(u)),
+        },
+        {
+          label: 'Từ chối',
+          color: colors.danger,
+          run: withBusy(u.uid, () => rejectChiefRequest(u)),
+        },
+      ];
+    }
+    if (kind === 'pending') {
+      if (isChiefRequest(u)) {
+        // Trưởng CA không duyệt được yêu cầu làm Trưởng CA — admin / dev duyệt.
+        return canApproveChief
+          ? [
+              {
+                label: 'Duyệt',
+                color: colors.success,
+                run: withBusy(u.uid, () => approveChiefRequest(u)),
+              },
+              {
+                label: 'Từ chối',
+                color: colors.danger,
+                run: withBusy(u.uid, () => rejectChiefRequest(u)),
+              },
+            ]
+          : [del];
+      }
+      return [
+        {
+          label: 'Duyệt',
+          color: colors.success,
+          run: withBusy(u.uid, () => approveUser(u)),
         },
         del,
       ];
@@ -165,9 +270,16 @@ export default function ManageUsersScreen() {
             <View style={styles.info}>
               <Text style={styles.name}>{displayNameOf(item)}</Text>
               <Text style={styles.sub}>{item.email}</Text>
-              <Text style={styles.sub}>
-                {item.unit ? item.unit : 'Chưa nhập đơn vị'}
-              </Text>
+              {section.kind === 'chief' ? (
+                <Text style={styles.unitLine}>
+                  Xin làm Trưởng CA · {unitName(item.unitId)}
+                </Text>
+              ) : isChiefRequest(item) ? (
+                <Text style={styles.unitLine}>
+                  Xin làm Trưởng CA
+                  {canApproveChief ? '' : ' · chờ admin đơn vị duyệt'}
+                </Text>
+              ) : null}
             </View>
             <View style={styles.actions}>
               {actionsFor(section.kind, item).map(a => (
@@ -189,23 +301,40 @@ export default function ManageUsersScreen() {
               ))}
             </View>
           </View>
-          <View style={styles.posRow}>
-            <Text style={styles.posLabel}>Chức vụ</Text>
-            <View style={styles.posSelect}>
-              <PositionSelect
-                value={item.position}
-                onChange={p =>
-                  changePosition(item, p)
-                }
-              />
+          {section.kind === 'chief' ||
+          item.role === 'dev' ||
+          (!canAssignSpecial && SPECIAL.includes(item.position)) ? null : (
+            <View style={styles.posRow}>
+              <Text style={styles.posLabel}>Chức vụ</Text>
+              <View style={styles.posSelect}>
+                <PositionSelect
+                  value={item.position}
+                  options={
+                    canAssignSpecial && item.approved
+                      ? POSITIONS
+                      : PLAIN_POSITIONS.concat(
+                          SPECIAL.includes(item.position)
+                            ? [item.position]
+                            : [],
+                        )
+                  }
+                  onChange={p => changePosition(item, p)}
+                />
+              </View>
             </View>
-          </View>
+          )}
         </View>
       )}
     />
   );
 }
 const styles = StyleSheet.create({
+  unitLine: {
+    color: colors.warning,
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 2,
+  },
   flex: {
     flex: 1,
     backgroundColor: colors.bg,

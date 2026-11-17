@@ -29,6 +29,7 @@ import {
   setupNotifications,
 } from '../services/notificationService';
 import { cancelTaskReminders } from '../services/taskNotificationService';
+import { setCurrentUnitId } from '../services/unitScope';
 import { useTodayKey } from '../hooks/useToday';
 import { BOSS_POSITION } from '../config/constants';
 const AuthContext = createContext(undefined);
@@ -68,6 +69,9 @@ export function AuthProvider({ children }) {
     profileUnsub.current = subscribeToProfile(
       user.uid,
       p => {
+        // Đặt đơn vị TRƯỚC khi render: mọi service dựng đường dẫn units/{id}/…
+        // từ giá trị này.
+        setCurrentUnitId(p?.unitId);
         setProfile(p);
         setProfileError(
           p ? null : new Error('Không tìm thấy hồ sơ người dùng.'),
@@ -88,6 +92,7 @@ export function AuthProvider({ children }) {
       if (!user) {
         profileUnsub.current?.();
         profileUnsub.current = null;
+        setCurrentUnitId('');
         setProfile(null);
         setProfileError(null);
         setInitializing(false);
@@ -111,14 +116,20 @@ export function AuthProvider({ children }) {
   }, [loadProfile]);
   // A user is a boss if their role is 'boss' OR their chức vụ is "Trưởng CA"
   // (the position alone grants boss permissions — see BOSS_POSITION).
+  // Phải đã được duyệt: tự chọn "Trưởng CA" chỉ là yêu cầu chờ dev duyệt.
   const isBoss =
-    profile?.role === 'boss' || profile?.position === BOSS_POSITION;
+    (profile?.role === 'boss' || profile?.position === BOSS_POSITION) &&
+    !!profile?.approved;
   // `dev` is a review/demo role: it sees the staff features (register plans)
   // AND can approve users, and is never gated by approval/active.
   const isDev = profile?.role === 'dev';
+  // "Cán bộ (admin)": cán bộ + quản trị tài khoản của đơn vị mình.
+  const isAdmin = profile?.role === 'admin' && !!profile?.approved;
   const isApproved = !!profile?.approved;
   // Older docs created before the `active` field default to active.
   const isActive = profile ? profile.active !== false : false;
+  // Mọi dữ liệu nằm theo đơn vị: chưa chọn đơn vị thì chưa vào được app.
+  const hasUnit = !!profile?.unitId;
 
   // Side effects that depend on the resolved profile.
   useEffect(() => {
@@ -146,7 +157,8 @@ export function AuthProvider({ children }) {
     // Only approved & active staff get the daily reminders. Bosses (by role or
     // by "Trưởng CA" position) never register; deactivated users are locked out.
     if (
-      profile.role === 'staff' &&
+      profile.unitId &&
+      (profile.role === 'staff' || profile.role === 'admin') &&
       profile.position !== BOSS_POSITION &&
       profile.approved &&
       profile.active !== false
@@ -184,8 +196,10 @@ export function AuthProvider({ children }) {
       profileError,
       isBoss,
       isDev,
+      isAdmin,
       isApproved,
       isActive,
+      hasUnit,
       signIn,
       signInApple,
       signInEmail,
@@ -193,12 +207,14 @@ export function AuthProvider({ children }) {
       retryProfile,
     }),
     [
+      hasUnit,
       initializing,
       firebaseUser,
       profile,
       profileError,
       isBoss,
       isDev,
+      isAdmin,
       isApproved,
       isActive,
       signIn,

@@ -65,13 +65,15 @@ const baseTask = (over = {}) => ({
 
 await env.withSecurityRulesDisabled(async ctx => {
   const db = ctx.firestore();
-  await setDoc(doc(db, 'users', 'chief'), { role: 'boss', position: 'Trưởng CA', approved: true, active: true });
-  await setDoc(doc(db, 'users', 'deputy'), { role: 'staff', position: 'Phó Trưởng CA', approved: true, active: true });
-  await setDoc(doc(db, 'users', 'devCB'), { role: 'dev', position: 'Cán bộ', approved: true, active: true });
-  await setDoc(doc(db, 'users', 'deputy2'), { role: 'staff', position: 'Phó Trưởng CA', approved: true, active: true });
-  await setDoc(doc(db, 'users', 'deputyPending'), { role: 'staff', position: 'Phó Trưởng CA', approved: false, active: true });
-  await setDoc(doc(db, 'users', 'staffA'), { role: 'staff', position: 'Cán bộ', approved: true, active: true });
-  await setDoc(doc(db, 'users', 'staffB'), { role: 'staff', position: 'Cán bộ', approved: true, active: true });
+  await setDoc(doc(db, 'users', 'chief'), { role: 'boss', position: 'Trưởng CA', approved: true, active: true, unitId: 'U1' });
+  await setDoc(doc(db, 'users', 'deputy'), { role: 'staff', position: 'Phó Trưởng CA', approved: true, active: true, unitId: 'U1' });
+  await setDoc(doc(db, 'users', 'devCB'), { role: 'dev', position: 'Cán bộ', approved: true, active: true, unitId: 'U1' });
+  await setDoc(doc(db, 'users', 'deputy2'), { role: 'staff', position: 'Phó Trưởng CA', approved: true, active: true, unitId: 'U1' });
+  await setDoc(doc(db, 'users', 'deputyPending'), { role: 'staff', position: 'Phó Trưởng CA', approved: false, active: true, unitId: 'U1' });
+  await setDoc(doc(db, 'users', 'staffA'), { role: 'staff', position: 'Cán bộ', approved: true, active: true, unitId: 'U1' });
+  await setDoc(doc(db, 'users', 'staffB'), { role: 'staff', position: 'Cán bộ', approved: true, active: true, unitId: 'U1' });
+  // Cán bộ của đơn vị KHÁC: không giao được nhiệm vụ sang.
+  await setDoc(doc(db, 'users', 'otherUnit'), { role: 'staff', position: 'Cán bộ', approved: true, active: true, unitId: 'U2' });
   await setDoc(doc(db, 'tasks', 'T1'), baseTask());
   await setDoc(doc(db, 'tasks', 'T2'), baseTask({ assignerUid: 'deputy', assigneeUid: 'staffB' }));
 });
@@ -94,6 +96,8 @@ await check('Phó giao ngược cho Trưởng (deny)', false, () =>
   setDoc(doc(deputy, 'tasks', 'R2'), baseTask({ assignerUid: 'deputy', assigneeUid: 'chief' })));
 await check('Phó giao ngang cho Phó khác (deny)', false, () =>
   setDoc(doc(deputy, 'tasks', 'R3'), baseTask({ assignerUid: 'deputy', assigneeUid: 'deputy2' })));
+await check('Trưởng CA giao cho người ĐƠN VỊ KHÁC (deny)', false, () =>
+  setDoc(doc(chief, 'tasks', 'R5'), baseTask({ assigneeUid: 'otherUnit' })));
 await check('giao cho người không tồn tại (deny)', false, () =>
   setDoc(doc(chief, 'tasks', 'R4'), baseTask({ assigneeUid: 'ghost' })));
 await check('Cán bộ giao nhiệm vụ (deny)', false, () =>
@@ -131,8 +135,12 @@ await check('query assigneeUid == me', true, () =>
 await check('query assignerUid == me', true, () =>
   getDocs(query(collection(chief, 'tasks'), where('assignerUid', '==', 'chief'))));
 await check('query tất cả nhiệm vụ (deny)', false, () => getDocs(collection(chief, 'tasks')));
-await check('Phó đọc danh sách cán bộ', true, () =>
+await check('Phó đọc danh sách cán bộ CÙNG đơn vị', true, () =>
+  getDocs(query(collection(deputy, 'users'), where('unitId', '==', 'U1'), where('active', '==', true))));
+await check('Phó đọc danh sách không lọc đơn vị (deny)', false, () =>
   getDocs(query(collection(deputy, 'users'), where('active', '==', true))));
+await check('Phó đọc danh sách đơn vị KHÁC (deny)', false, () =>
+  getDocs(query(collection(deputy, 'users'), where('unitId', '==', 'U2'), where('active', '==', true))));
 await check('Cán bộ đọc danh sách cán bộ (deny)', false, () =>
   getDocs(query(collection(staffA, 'users'), where('active', '==', true))));
 

@@ -1,7 +1,5 @@
 import {
-  collection,
   collectionGroup,
-  doc,
   getDoc,
   getDocs,
   onSnapshot,
@@ -11,11 +9,12 @@ import {
   where,
 } from '@react-native-firebase/firestore';
 import { db } from './firebase';
+import { unitCollection, unitDoc } from './unitScope';
 import { dateParts, toDateKey } from '../utils/date';
 import { displayNameOf, subscribeApprovedStaff } from './userService';
 /**
- * Firestore path for a day's registrations:
- *   history/{year}/months/{month}/days/{day}/entries/{uid}
+ * Firestore path for a day's registrations (theo ĐƠN VỊ của người đăng nhập):
+ *   units/{unitId}/history/{year}/months/{month}/days/{day}/entries/{uid}
  *
  * The năm → tháng → ngày → user nesting is preserved, but the collection names
  * (history / months / days / entries) are FIXED literals — only the ids (year,
@@ -25,20 +24,11 @@ import { displayNameOf, subscribeApprovedStaff } from './userService';
  */
 function entriesColRef(d) {
   const { year, month, day } = dateParts(d);
-  return collection(
-    db,
-    'history',
-    year,
-    'months',
-    month,
-    'days',
-    day,
-    'entries',
-  );
+  return unitCollection('history', year, 'months', month, 'days', day, 'entries');
 }
 function entryDocRef(d, uid) {
   const { year, month, day } = dateParts(d);
-  return doc(db, 'history', year, 'months', month, 'days', day, 'entries', uid);
+  return unitDoc('history', year, 'months', month, 'days', day, 'entries', uid);
 }
 
 /** Create or overwrite the signed-in user's plan for `date` (default today). */
@@ -49,6 +39,7 @@ export async function registerPlan(user, content, date = new Date()) {
     uid: user.uid,
     displayName: displayNameOf(user),
     unit: user.unit,
+    unitId: user.unitId,
     date: toDateKey(date),
     content: content.trim(),
     createdAt: existing.exists() ? existing.data().createdAt : now,

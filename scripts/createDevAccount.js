@@ -30,7 +30,9 @@ const PASSWORD = 'Reymysterio109';
 const PROFILE = {
   fullName: 'Tài khoản Demo (App Review)',
   position: 'Cán bộ',
-  unit: 'Công an phường Hàng Gòn',
+  // Tài khoản review thuộc Phường Hàng Gòn (dữ liệu demo nằm ở đơn vị này).
+  unitId: 'phuong-hang-gon',
+  unit: 'Phường Hàng Gòn',
   role: 'dev',
   approved: true,
   active: true,

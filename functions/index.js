@@ -7,7 +7,8 @@
  * closed.
  *
  *  1. onPlanRegistered  — when a staff member registers OR updates a plan, push
- *     FCM to all bosses. Works even when the boss app is closed. Uses
+ *     FCM to the bosses OF THAT ĐƠN VỊ (units/{unitId}/history/...).
+ *     Works even when the boss app is closed. Uses
  *     onDocumentWritten (not onDocumentCreated) because a staff member has one
  *     entry doc per day (id = their uid); re-submitting the same day overwrites
  *     it as an UPDATE, which onDocumentCreated would miss.
@@ -51,9 +52,9 @@ async function sendToTokens(tokens, notification) {
   return res;
 }
 
-// 1) Alert all bosses when a plan is registered OR updated.
+// 1) Alert the đơn vị's bosses when a plan is registered OR updated.
 exports.onPlanRegistered = onDocumentWritten(
-    "history/{year}/months/{month}/days/{day}/entries/{uid}",
+    "units/{unitId}/history/{year}/months/{month}/days/{day}/entries/{uid}",
     async (event) => {
       const after = event.data && event.data.after;
       // No `after` → the entry was deleted; nothing to announce.
@@ -69,8 +70,10 @@ exports.onPlanRegistered = onDocumentWritten(
       const isUpdate = before && before.exists;
       const verb = isUpdate ? "vừa cập nhật" : "vừa đăng ký";
 
+      // Chỉ Trưởng CA của CHÍNH đơn vị đó — đơn vị khác không được biết.
       const bossSnap = await db
           .collection("users")
+          .where("unitId", "==", event.params.unitId)
           .where("role", "==", "boss")
           .get();
       const tokens = bossSnap.docs
@@ -97,6 +100,13 @@ exports.deleteUserAccount = onCall(async (request) => {
   const targetUid = request.data && request.data.uid;
   if (!targetUid) {
     throw new HttpsError("invalid-argument", "Thiếu uid.");
+  }
+  // Trưởng CA chỉ xoá được người trong đơn vị của mình.
+  const targetSnap = await db.collection("users").doc(targetUid).get();
+  const callerUnit = callerSnap.data().unitId || "";
+  if (targetSnap.exists &&
+      (!callerUnit || targetSnap.data().unitId !== callerUnit)) {
+    throw new HttpsError("permission-denied", "Người này thuộc đơn vị khác.");
   }
 
   await db.collection("users").doc(targetUid).delete();

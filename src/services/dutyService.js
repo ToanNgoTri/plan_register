@@ -1,6 +1,5 @@
 import {
   deleteDoc,
-  doc,
   getDoc,
   onSnapshot,
   setDoc,
@@ -22,20 +21,21 @@ import {
   pick,
   types,
 } from '@react-native-documents/picker';
-import { db, storage } from './firebase';
+import { storage } from './firebase';
 import { displayNameOf } from './userService';
+import { getCurrentUnitId, unitDoc } from './unitScope';
 import { DUTY_MAX_FILE_BYTES } from '../config/constants';
 
 /**
  * Lịch trực của từng lực lượng (CA / ANCS).
  *
  * Mỗi lực lượng giữ ĐÚNG MỘT bản hiện hành tại:
- *   duty_schedules/{force}        force = 'CA' | 'ANCS'
+ *   units/{unitId}/duty_schedules/{force}        force = 'CA' | 'ANCS'
  * Đăng bản mới ghi đè document đó và xoá tệp cũ trên Storage — KHÔNG lưu lịch
  * sử các bản đã thay thế. Bù lại, document luôn ghi rõ ai đăng và lúc nào
  * (`uploadedBy` / `uploadedByName` / `uploadedAt`) để truy được nguồn.
  *
- * Tệp gốc nằm ở  duty/{force}/{timestamp}-{tên tệp}. Tên có timestamp để mỗi
+ * Tệp gốc nằm ở  duty/{unitId}/{force}/{timestamp}-{tên tệp}. Tên có timestamp để mỗi
  * lần đăng lại sinh một URL khác — nếu dùng đường dẫn cố định thì app và CDN
  * sẽ tiếp tục hiển thị ảnh cũ đã cache.
  */
@@ -59,7 +59,7 @@ function documentKindOf(type) {
 }
 
 function scheduleRef(force) {
-  return doc(db, 'duty_schedules', force);
+  return unitDoc('duty_schedules', force);
 }
 
 /**
@@ -221,7 +221,9 @@ export async function uploadDutySchedule({ force, user, file, note = '' }) {
     );
   }
   const previous = await getDoc(scheduleRef(force));
-  const storagePath = `duty/${force}/${Date.now()}-${safeFileName(file.name)}`;
+  const storagePath = `duty/${getCurrentUnitId()}/${force}/${Date.now()}-${safeFileName(
+    file.name,
+  )}`;
   const fileRef = ref(storage, storagePath);
   await putFile(fileRef, file.uri, {
     contentType: file.type ?? undefined,

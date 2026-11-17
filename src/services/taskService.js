@@ -125,7 +125,12 @@ export function subscribeMyTasks(uid, onChange, onError) {
 export function subscribeAssignableUsers(me, onChange, onError) {
   const myRank = commandRank(me);
   return onSnapshot(
-    query(collection(db, 'users'), where('active', '==', true)),
+    // Chỉ người CÙNG ĐƠN VỊ (rules cũng chỉ cho đọc hồ sơ trong đơn vị).
+    query(
+      collection(db, 'users'),
+      where('unitId', '==', me.unitId),
+      where('active', '==', true),
+    ),
     snap => {
       const list = snap.docs
         .map(d => ({ ...d.data(), uid: d.id }))
@@ -153,6 +158,7 @@ export async function createTask(me, assignee, { title, content, dueAt }) {
     assignerName: displayNameOf(me),
     assigneeUid: assignee.uid,
     assigneeName: displayNameOf(assignee),
+    unitId: me.unitId,
     dueAt,
     status: TASK_STATUS.PENDING,
     rejectReason: null,

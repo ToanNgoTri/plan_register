@@ -11,10 +11,13 @@ service firebase.storage {
 
     // Same set as canUseDuty() in firestore.rules: approved staff, the boss
     // (by role or by the "Trưởng CA" chức vụ), and the dev/review account.
-    function canUseDuty() {
+    // …and only for the caller's own đơn vị (users/{uid}.unitId).
+    function canUseDuty(unitId) {
       return request.auth != null
+        && myProfile().get('unitId', '') == unitId
+        && unitId != ''
         && (
-             (myProfile().role == 'staff'
+             (myProfile().role in ['staff', 'admin']
               && myProfile().approved == true
               && myProfile().active == true)
              || myProfile().role == 'boss'
@@ -23,16 +26,16 @@ service firebase.storage {
            );
     }
 
-    // ---- duty roster files: duty/{force}/{fileName} ----
+    // ---- duty roster files: duty/{unitId}/{force}/{fileName} ----
     // NOTE: the app renders the file through its download-token URL, which by
     // design bypasses these rules. That URL only ever lives in the protected
     // duty_schedules doc, so this still gates who can obtain it.
-    match /duty/{force}/{fileName} {
-      allow read: if canUseDuty();
+    match /duty/{unitId}/{force}/{fileName} {
+      allow read: if canUseDuty(unitId);
 
       // Only images, Word documents and PDFs, max 15MB — keep in sync with
       // DUTY_MAX_FILE_BYTES in src/config/constants.js.
-      allow create, update: if canUseDuty()
+      allow create, update: if canUseDuty(unitId)
         && force in ['CA', 'ANCS']
         && request.resource.size < 15 * 1024 * 1024
         && (
@@ -45,7 +48,7 @@ service firebase.storage {
            );
 
       // Replacing a roster deletes the file it superseded.
-      allow delete: if canUseDuty();
+      allow delete: if canUseDuty(unitId);
     }
 
     // Nothing else in the bucket is reachable from a client.

@@ -1,5 +1,4 @@
 import {
-  collection,
   doc,
   getDoc,
   getDocs,
@@ -13,6 +12,7 @@ import {
 } from '@react-native-firebase/firestore';
 import { db } from './firebase';
 import { displayNameOf } from './userService';
+import { unitCollection, unitDoc } from './unitScope';
 import {
   DEFAULT_DOC_TYPES,
   DEFAULT_ISSUING_UNITS,
@@ -23,7 +23,7 @@ import {
 /**
  * Sổ số văn bản: cấp số cho từng văn bản đi và lưu lại lịch sử đã cấp.
  *
- * Firestore:
+ * Firestore (mỗi đơn vị một sổ riêng, tất cả nằm dưới units/{unitId}/):
  *   doc_numbers/{autoId}                       – một văn bản đã lấy số
  *   doc_number_counters/{năm}-{loại}           – { next } : số sẽ cấp tiếp theo
  *   doc_number_suffixes/{năm}-{loại}-{số}      – { next } : chữ cái phụ kế tiếp
@@ -63,14 +63,14 @@ import {
  * (điểm 2 mới là thứ bảo đảm số không trùng).
  */
 
-const numbersCol = () => collection(db, 'doc_numbers');
-const locksCol = () => collection(db, 'doc_number_locks');
-const lockRef = typeId => doc(db, 'doc_number_locks', typeId);
+const numbersCol = () => unitCollection('doc_numbers');
+const locksCol = () => unitCollection('doc_number_locks');
+const lockRef = typeId => unitDoc('doc_number_locks', typeId);
 const counterRef = (year, typeId) =>
-  doc(db, 'doc_number_counters', `${year}-${typeId}`);
+  unitDoc('doc_number_counters', `${year}-${typeId}`);
 const suffixRef = (year, typeId, seq) =>
-  doc(db, 'doc_number_suffixes', `${year}-${typeId}-${seq}`);
-const optionsRef = () => doc(db, 'doc_number_options', 'lists');
+  unitDoc('doc_number_suffixes', `${year}-${typeId}-${seq}`);
+const optionsRef = () => unitDoc('doc_number_options', 'lists');
 
 /**
  * Loại văn bản theo id trong danh mục đang dùng, hoặc null nếu id lạ — loại đã
