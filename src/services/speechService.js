@@ -46,7 +46,7 @@ export async function ensureMicPermission() {
   }
   const result = await PermissionsAndroid.request(permission, {
     title: 'Cho phép dùng micro',
-    message: 'Ứng dụng cần micro để đọc trích yếu văn bản thành chữ.',
+    message: 'Ứng dụng cần micro để chuyển giọng nói thành chữ.',
     buttonPositive: 'Cho phép',
     buttonNegative: 'Không',
   });

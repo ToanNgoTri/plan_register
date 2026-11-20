@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import {
   addListeners,
+  cancel,
   isAvailable,
   isSupported,
   start,
@@ -22,6 +23,18 @@ import { colors, spacing } from '../theme';
  * quả tạm rất dày; đẩy thẳng vào state sẽ làm ô nhập nhiều dòng giật.
  */
 const PARTIAL_THROTTLE_MS = 100;
+
+/**
+ * Module native chỉ có MỘT phiên nghe cho cả app, và mọi nút đều nhận chung sự
+ * kiện của nó. Màn hình có nhiều ô (VD: tên + nội dung nhiệm vụ) thì chỉ nút
+ * đang giữ phiên mới được xử lý sự kiện; các nút khác bị khoá cho tới khi xong.
+ */
+let activeOwner = null;
+const ownerListeners = new Set();
+function setActiveOwner(owner) {
+  activeOwner = owner;
+  ownerListeners.forEach(fn => fn(owner));
+}
 
 /**
  * Nút đọc chính tả cho một ô nhập chữ.
@@ -38,8 +51,15 @@ export default function DictationButton({
   onChangeText,
   disabled,
   onRecordingChange,
+  hint = 'Bấm để đọc trích yếu',
+  singleLine = false,
 }) {
   const [available, setAvailable] = useState(false);
+  /** Định danh riêng của nút này khi tranh phiên nghe với các nút khác. */
+  const owner = useRef({});
+  const [otherActive, setOtherActive] = useState(
+    activeOwner != null && activeOwner !== owner.current,
+  );
   const [recording, setRecording] = useState(false);
   const [starting, setStarting] = useState(false);
   const [level, setLevel] = useState(0);
@@ -54,12 +74,34 @@ export default function DictationButton({
    * Callback do màn hình truyền vào thường là arrow tạo mới mỗi lần render. Giữ
    * qua ref để việc đăng ký listener native chỉ chạy đúng một lần.
    */
-  const emit = useRef({ onChangeText, onRecordingChange });
+  const emit = useRef({ onChangeText, onRecordingChange, singleLine });
 
   useEffect(() => {
     latestValue.current = value;
-    emit.current = { onChangeText, onRecordingChange };
-  }, [onChangeText, onRecordingChange, value]);
+    emit.current = { onChangeText, onRecordingChange, singleLine };
+  }, [onChangeText, onRecordingChange, singleLine, value]);
+
+  /** Ô một dòng (tiêu đề) không nhận "xuống dòng" — đổi thành khoảng trắng. */
+  const output = useCallback(text => {
+    const out = emit.current.singleLine
+      ? text.replace(/[ \t]*\n[ \t]*/g, ' ')
+      : text;
+    emit.current.onChangeText(out);
+  }, []);
+
+  useEffect(() => {
+    const me = owner.current;
+    const onOwner = o => setOtherActive(o != null && o !== me);
+    ownerListeners.add(onOwner);
+    return () => {
+      ownerListeners.delete(onOwner);
+      // Rời màn hình (đóng modal) khi đang nghe thì tắt micro luôn.
+      if (activeOwner === me) {
+        setActiveOwner(null);
+        cancel().catch(() => {});
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -90,6 +132,9 @@ export default function DictationButton({
     setStarting(false);
     setLevel(0);
     emit.current.onRecordingChange?.(false);
+    if (activeOwner === owner.current) {
+      setActiveOwner(null);
+    }
   }, [clearPartialTimer]);
 
   useEffect(() => {
@@ -97,11 +142,20 @@ export default function DictationButton({
       return undefined;
     }
 
+    // Sự kiện native đến mọi nút — chỉ nút đang giữ phiên mới xử lý.
+    const mine =
+      fn =>
+      (...args) => {
+        if (activeOwner === owner.current) {
+          fn(...args);
+        }
+      };
+
     const remove = addListeners({
-      onStart: () => {
+      onStart: mine(() => {
         setStarting(false);
-      },
-      onPartial: text => {
+      }),
+      onPartial: mine(text => {
         // Gom lại: chỉ vẽ tối đa 10 lần/giây, và luôn vẽ bản mới nhất.
         pendingPartial.current = text;
         if (partialTimer.current) {
@@ -112,30 +166,28 @@ export default function DictationButton({
           const latest = pendingPartial.current;
           pendingPartial.current = null;
           if (latest != null) {
-            emit.current.onChangeText(
-              appendDictation(segmentBase.current, latest),
-            );
+            output(appendDictation(segmentBase.current, latest));
           }
         }, PARTIAL_THROTTLE_MS);
-      },
-      onFinal: text => {
+      }),
+      onFinal: mine(text => {
         clearPartialTimer();
         segmentBase.current = appendDictation(segmentBase.current, text);
-        emit.current.onChangeText(segmentBase.current);
-      },
-      onVolume: setLevel,
-      onEnd: finish,
-      onError: message => {
+        output(segmentBase.current);
+      }),
+      onVolume: mine(setLevel),
+      onEnd: mine(finish),
+      onError: mine(message => {
         finish();
         Alert.alert('Không nghe được', message);
-      },
+      }),
     });
 
     return () => {
       remove();
       clearPartialTimer();
     };
-  }, [clearPartialTimer, finish]);
+  }, [clearPartialTimer, finish, output]);
 
   const toggle = useCallback(async () => {
     if (recording) {
@@ -145,15 +197,20 @@ export default function DictationButton({
       return;
     }
 
+    if (activeOwner != null && activeOwner !== owner.current) {
+      return;
+    }
     segmentBase.current = latestValue.current || '';
+    setActiveOwner(owner.current);
     setStarting(true);
     try {
       const started = await start({ locale: 'vi-VN', punctuate: true });
       if (!started) {
         setStarting(false);
+        setActiveOwner(null);
         Alert.alert(
           'Chưa có quyền micro',
-          'Hãy bật quyền micro cho ứng dụng trong Cài đặt để đọc trích yếu.',
+          'Hãy bật quyền micro cho ứng dụng trong Cài đặt để đọc chính tả.',
         );
         return;
       }
@@ -161,6 +218,7 @@ export default function DictationButton({
       emit.current.onRecordingChange?.(true);
     } catch (e) {
       setStarting(false);
+      setActiveOwner(null);
       Alert.alert('Không mở được micro', e?.message || 'Vui lòng thử lại.');
     }
   }, [recording]);
@@ -173,13 +231,14 @@ export default function DictationButton({
     <View style={styles.row}>
       <Pressable
         onPress={toggle}
-        disabled={disabled || starting}
+        disabled={disabled || starting || otherActive}
         style={({ pressed }) => [
           styles.button,
           recording && styles.buttonRecording,
-          (disabled || starting) && styles.buttonDisabled,
+          (disabled || starting || otherActive) && styles.buttonDisabled,
           pressed && styles.buttonPressed,
-        ]}>
+        ]}
+      >
         {starting ? (
           <ActivityIndicator size="small" color={colors.primary} />
         ) : (
@@ -200,11 +259,13 @@ export default function DictationButton({
             />
           </View>
           <Text style={styles.hint}>
-            Đang nghe — đọc "phẩy", "chấm", "xuống dòng" để có dấu câu.
+            {singleLine
+              ? 'Đang nghe — đọc "phẩy", "chấm" để có dấu câu.'
+              : 'Đang nghe — đọc "phẩy", "chấm", "xuống dòng" để có dấu câu.'}
           </Text>
         </View>
       ) : (
-        <Text style={styles.hint}>Bấm để đọc trích yếu</Text>
+        <Text style={styles.hint}>{hint}</Text>
       )}
     </View>
   );

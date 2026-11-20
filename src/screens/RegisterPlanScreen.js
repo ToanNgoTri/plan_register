@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { useAuth } from '../context/AuthContext';
+import DictationButton from '../components/DictationButton';
 import {
   registerPlan,
   subscribeDailyEntries,
@@ -25,6 +26,7 @@ export default function RegisterPlanScreen() {
   const headerHeight = useHeaderHeight();
   const { profile } = useAuth();
   const [content, setContent] = useState('');
+  const [dictating, setDictating] = useState(false);
   const [existing, setExisting] = useState(null);
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -190,6 +192,14 @@ export default function RegisterPlanScreen() {
                   placeholderTextColor={colors.textMuted}
                   multiline
                   textAlignVertical="top"
+                  editable={!saving && !dictating}
+                />
+                <DictationButton
+                  value={content}
+                  onChangeText={setContent}
+                  disabled={saving}
+                  onRecordingChange={setDictating}
+                  hint="Bấm để đọc nội dung kế hoạch"
                 />
                 <TouchableOpacity
                   style={styles.button}

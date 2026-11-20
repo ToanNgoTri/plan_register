@@ -19,6 +19,7 @@ import DateTimePicker, {
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../context/AuthContext';
 import { useTasks } from '../hooks/useTasks';
+import DictationButton from '../components/DictationButton';
 import {
   approveTask,
   createTask,
@@ -284,6 +285,7 @@ function TaskFormModal({ visible, me, editing, selfOnly, onClose }) {
   const [assigneeUid, setAssigneeUid] = useState(null);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
+  const [dictating, setDictating] = useState(false);
   const [due, setDue] = useState(defaultDue);
   const [busy, setBusy] = useState(false);
 
@@ -399,6 +401,15 @@ function TaskFormModal({ visible, me, editing, selfOnly, onClose }) {
               placeholder="VD: Xác minh đơn của ông A"
               placeholderTextColor={colors.textMuted}
               maxLength={300}
+              editable={!busy && !dictating}
+            />
+            <DictationButton
+              value={title}
+              onChangeText={t => setTitle(t.slice(0, 300))}
+              disabled={busy}
+              onRecordingChange={setDictating}
+              hint="Bấm để đọc tên nhiệm vụ"
+              singleLine
             />
 
             <Text style={styles.label}>Nội dung / yêu cầu</Text>
@@ -409,6 +420,14 @@ function TaskFormModal({ visible, me, editing, selfOnly, onClose }) {
               placeholder="Mô tả chi tiết (không bắt buộc)"
               placeholderTextColor={colors.textMuted}
               multiline
+              editable={!busy && !dictating}
+            />
+            <DictationButton
+              value={content}
+              onChangeText={setContent}
+              disabled={busy}
+              onRecordingChange={setDictating}
+              hint="Bấm để đọc nội dung / yêu cầu"
             />
 
             <Text style={styles.label}>Hạn hoàn thành *</Text>
